@@ -292,6 +292,8 @@ jobs:
         with:
           script: |
             const aiResponse = process.env.AI_RESPONSE;
+            const similarIssues = JSON.parse(process.env.SIMILAR_ISSUES);
+            const candidateNumbers = new Set(similarIssues.map(issue => issue.number));
 
             console.log('Raw AI response:', JSON.stringify(aiResponse));
 
@@ -305,22 +307,17 @@ jobs:
 
               // Ensure it's an array and contains only numbers
               if (!Array.isArray(duplicateNumbers)) {
-                console.log('AI response is not an array, trying to extract numbers');
-                const numberMatches = cleanResponse.match(/\d+/g);
-                duplicateNumbers = numberMatches ? numberMatches.map(n => parseInt(n)) : [];
+                console.log('AI response is not an array, skipping automated action');
+                duplicateNumbers = [];
               }
 
-              // Filter to only valid numbers
-              duplicateNumbers = duplicateNumbers.filter(n => typeof n === 'number' && !isNaN(n));
+              duplicateNumbers = [...new Set(duplicateNumbers)].filter(
+                n => Number.isInteger(n) && candidateNumbers.has(n)
+              ).slice(0, 5);
 
             } catch (error) {
               console.log('Failed to parse AI response as JSON:', error.message);
-              console.log('Raw response:', aiResponse);
-
-              // Fallback: try to extract numbers from the response
-              const numberMatches = aiResponse.match(/\d+/g);
-              duplicateNumbers = numberMatches ? numberMatches.map(n => parseInt(n)) : [];
-              console.log('Extracted numbers as fallback:', duplicateNumbers);
+              duplicateNumbers = [];
             }
 
             if (!Array.isArray(duplicateNumbers) || duplicateNumbers.length === 0) {
@@ -331,7 +328,6 @@ jobs:
             console.log(`AI detected ${duplicateNumbers.length} potential duplicates: ${duplicateNumbers.join(', ')}`);
 
             // Get details of detected duplicates
-            const similarIssues = JSON.parse(process.env.SIMILAR_ISSUES);
             const duplicates = similarIssues.filter(issue => duplicateNumbers.includes(issue.number));
 
             if (duplicates.length === 0) {

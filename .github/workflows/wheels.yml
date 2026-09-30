@@ -27,6 +27,7 @@ jobs:
     name: Initialize wheels builder
     if: github.repository_owner == 'home-assistant'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +54,10 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" =~ (schedule|workflow_dispatch) ]]; then
             touch requirements_diff.txt
           else
-            curl -s -o requirements_diff.txt https://raw.githubusercontent.com/home-assistant/core/master/requirements.txt
+              curl --fail --location --silent --show-error \
+                --output requirements_diff.txt \
+                https://raw.githubusercontent.com/home-assistant/core/master/requirements.txt
+              test -s requirements_diff.txt
           fi
 
       - name: Write env-file
@@ -104,6 +108,7 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: init
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -155,6 +160,7 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: init
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:

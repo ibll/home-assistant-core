@@ -32,6 +32,7 @@ jobs:
     name: Initialize build
     if: github.repository_owner == 'home-assistant'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read # To check out the repository
     outputs:
@@ -92,8 +93,10 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: init
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     permissions:
       contents: read # To check out the repository
+      actions: read # To download artifacts from dependent repositories
       packages: write # To push to GHCR
       id-token: write # For cosign signing
     strategy:
@@ -217,6 +220,7 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: ["init", "build_base"]
     runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 60
     permissions:
       contents: read # To check out the repository
       packages: write # To push to GHCR
@@ -298,6 +302,7 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: ["init", "build_machine", "run_e2e_tests_machine"]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -338,6 +343,7 @@ jobs:
     if: github.repository_owner == 'home-assistant'
     needs: ["init", "build_base", "run_e2e_tests_base"]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read # To check out the repository
       packages: write # To push to GHCR
@@ -473,6 +479,7 @@ jobs:
     environment: ${{ needs.init.outputs.channel }}
     needs: ["init", "build_base", "run_e2e_tests_base"]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read # To check out the repository
       id-token: write # For PyPI trusted publishing
@@ -514,6 +521,7 @@ jobs:
   hassfest-image:
     name: Build and test hassfest image
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read # To check out the repository
       packages: write # To push to GHCR
