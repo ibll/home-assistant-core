@@ -72,13 +72,13 @@ These make good "before/after" evidence for checklist Q2.
 ## Target pipeline
 
 ```
-team-pipeline.yml  (PR + push to dev + workflow_dispatch)        [Lead]
+team-pipeline.yml  (PR + push to main + workflow_dispatch)        [Lead]
  ├─ changes      → which integrations/files changed               [A]
  ├─ build        → lint, hassfest, wheel/sdist  ─┐                [A]
  ├─ test         → changed-integration tests + contract suite     [B]
  ├─ security     → secrets, deps, SAST, SBOM, new-dep tracker     [C]
  ├─ ai-advisory  → triage / test-gap / dep-risk / release notes   [A–D, one each]
- └─ (dev only) package → docker build → GHCR → sign → scan        [D]
+ └─ (main only) package → docker build → GHCR → sign → scan        [D]
                     └─ deploy-staging (Environment approval) → smoke test → rollback-on-fail [D]
 team-metrics.yml   (nightly) → DORA + pipeline + AI metrics → artifact + job summary [Lead]
 team-model-compare.yml (dispatch) → same prompt × N models → comparison artifact     [Lead]
@@ -97,7 +97,7 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
 - **L1 Repo setup** (manual settings):
   - Enable Issues.
   - Create the `staging` environment with the tech lead as required reviewer.
-  - Add branch protection on `dev` that requires the `team-pipeline` checks.
+  - Add branch protection on `main` that requires the `team-pipeline` checks.
   - Add a PR template section "AI used? link to ai-log".
 - **L2 Failure-proof suite.** Add a `workflow_dispatch` input `inject_failure: {none,lint,test,security,smoke}` that makes the chosen stage fail on purpose. This proves "fails correctly" (Q14). Artifact: a run link per mode.
 - **L3 Metrics collector** (`team-metrics.yml`, nightly). Uses `gh api` on the Actions runs/jobs endpoints to compute:
@@ -169,7 +169,7 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
   - Build `Dockerfile` for amd64 with `BUILD_FROM` set to the base version, using the same version lookup as the `init` job in `builder.yml`.
   - If installing `requirements_all.txt` is too slow or fails, add `Dockerfile.ci` that installs core only (`requirements.txt` plus `-e .`).
   - Document the decision.
-- **D2 Push and sign.** Push to `ghcr.io/ibll/home-assistant-core:<sha>` and `:dev`, then sign with keyless `cosign`. Needs `packages: write` and `id-token: write`, scoped to the package job only.
+- **D2 Push and sign.** Push to `ghcr.io/ibll/home-assistant-core:<sha>` and `:main`, then sign with keyless `cosign`. Needs `packages: write` and `id-token: write`, scoped to the package job only.
 - **D3 Image scan.** Run Trivy on the image, failing on CRITICAL, and upload SARIF. Produce an image SBOM using C5's action.
 - **D4 Deploy to staging.**
   - The job uses `environment: staging`, which requires the lead's approval.
@@ -200,7 +200,7 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
 | Q12 | Are the modifications human readable? | All | Code review + AI logs | Named steps, comments explain "why", every AI output reviewed and logged |
 | Q13 | Does the pipeline make sure changes do not break the applications that depend on the shared backend? | B (B2) | Contract-suite runs | Contract suite runs on every PR, and an injected API break fails it |
 | Q14 | Does the pipeline run end to end without errors, and does it fail correctly when a test or step fails? | Lead (L2) | Green run + 5 injected-failure runs | Each injected failure fails the right stage and blocks deploy |
-| Q15 | Does the new CI/CD pipeline perform all the expected CI/CD tasks: build, test, security scanning, artifact storage, and deployment? | All | One run link per task | All 5 present in a single `dev` run |
+| Q15 | Does the new CI/CD pipeline perform all the expected CI/CD tasks: build, test, security scanning, artifact storage, and deployment? | All | One run link per task | All 5 present in a single `main` run |
 | Q16 | Can everyone in your team explain how the AI developed the CI/CD pipelines and/or the changes made to the already existing one? | Lead | AI logs + a 5-min walkthrough by each member | Each member presents their AI log without notes |
 | N1 | Are all actions SHA-pinned, and does every job declare minimal `permissions`? | C | zizmor/actionlint output | Zero findings |
 | N2 | Can AI steps be prompt-injected by untrusted input (PR text, logs, issue bodies)? | C | Test PR with an injection string | Output validated, no write action taken |

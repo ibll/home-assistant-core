@@ -21,13 +21,13 @@ upstream workflows**.
 ## How it fits together
 
 ```
-team-pipeline.yml  (pull request, push to dev, manual run)
+team-pipeline.yml  (pull request, push to main, manual run)
  ├─ changes      team-changes.yml      Member A
  ├─ build        team-build.yml        Member A
  ├─ test         team-test.yml         Member B
  ├─ security     team-security.yml     Member C
  ├─ ai-advisory  team-ai-advisory.yml  one AI job from each member
- └─ package      team-package.yml      Member D   (push to dev and manual runs only)
+ └─ package      team-package.yml      Member D   (push to main and manual runs only)
      └─ deploy   team-deploy.yml       Member D   (needs approval in the `staging` environment)
 ```
 

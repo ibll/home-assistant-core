@@ -30,7 +30,7 @@ course questions do not cover.
 | Q12 | Are the modifications human readable? | All | Code review + AI logs | Named steps, comments explain "why", every AI output reviewed and logged |  |  |
 | Q13 | Does the pipeline make sure changes do not break the applications that depend on the shared backend? | B (B2) | Contract-suite runs | Contract suite runs on every PR, and an injected API break fails it |  |  |
 | Q14 | Does the pipeline run end to end without errors, and does it fail correctly when a test or step fails? | Lead (L2) | Green run + 5 injected-failure runs | Each injected failure fails the right stage and blocks deploy |  |  |
-| Q15 | Does the new CI/CD pipeline perform all the expected CI/CD tasks: build, test, security scanning, artifact storage, and deployment? | All | One run link per task | All 5 present in a single `dev` run |  |  |
+| Q15 | Does the new CI/CD pipeline perform all the expected CI/CD tasks: build, test, security scanning, artifact storage, and deployment? | All | One run link per task | All 5 present in a single `main` run |  |  |
 | Q16 | Can everyone in your team explain how the AI developed the CI/CD pipelines and/or the changes made to the already existing one? | Lead | AI logs + a 5-min walkthrough by each member | Each member presents their AI log without notes |  |  |
 | N1 | Are all actions SHA-pinned, and does every job declare minimal `permissions`? | C | zizmor/actionlint output | Zero findings |  |  |
 | N2 | Can AI steps be prompt-injected by untrusted input (PR text, logs, issue bodies)? | C | Test PR with an injection string | Output validated, no write action taken |  |  |

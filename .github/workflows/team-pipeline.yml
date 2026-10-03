@@ -8,7 +8,7 @@ name: Team pipeline
 on:
   push:
     branches:
-      - dev
+      - main
   pull_request: ~
   workflow_dispatch:
     inputs:
@@ -96,7 +96,7 @@ jobs:
       - build
       - test
       - security
-    # Only push to dev and manual runs publish an image; pull requests stop
+    # Only push to main and manual runs publish an image; pull requests stop
     # after verification.
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/team-package.yml
