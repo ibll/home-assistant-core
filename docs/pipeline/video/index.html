@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline Tutorial Video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a CI run viewer. A 16:9 stage where every scene is one SVG diagram (1600x900 units), controls under it, then the script. */
+:root {
+  --paper: #f3f5f9;
+  --surface: #ffffff;
+  --ink: #15203b;
+  --muted: #5a647a;
+  --line: #d3d9e5;
+  --accent: #2c51d4;
+  --accent-soft: #e4eafc;
+  --ok: #1d8648;
+  --bad: #c3352d;
+  --wait: #a86f12;
+  --skip: #8b93a6;
+  --caption-bg: rgba(16, 24, 44, 0.88);
+  --caption-fg: #f4f6fb;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0e1423; --surface: #151d31; --ink: #e5e9f3; --muted: #9ba5bb; --line: #2c3753;
+    --accent: #819bff; --accent-soft: #1f2a4a; --ok: #4cc47f; --bad: #ff6f64; --wait: #e3b14d; --skip: #717b94;
+    --caption-bg: rgba(4, 8, 18, 0.88); --caption-fg: #f4f6fb;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0e1423; --surface: #151d31; --ink: #e5e9f3; --muted: #9ba5bb; --line: #2c3753;
+  --accent: #819bff; --accent-soft: #1f2a4a; --ok: #4cc47f; --bad: #ff6f64; --wait: #e3b14d; --skip: #717b94;
+  --caption-bg: rgba(4, 8, 18, 0.88); --caption-fg: #f4f6fb;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5; padding-inline: 16px; padding-block: 24px 48px; }
+.wrap { max-width: 1180px; margin-inline: auto; display: grid; gap: 20px; }
+header.page { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+header.page h1 { font-family: var(--font-display); font-stretch: 118%; font-weight: 800; font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+header.page p { margin: 0; color: var(--muted); }
+
+/* ---------- Stage ---------- */
+.stage-shell { background: var(--paper); }
+.stage-shell:fullscreen { display: grid; place-items: center; }
+.stage { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; container-type: inline-size; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.stage-shell:fullscreen .stage { width: min(100vw, 177.78vh); border-radius: 0; border: 0; }
+.scene { position: absolute; inset: 0; opacity: 0; visibility: hidden; transition: opacity 0.45s ease, visibility 0s linear 0.45s; }
+.scene.active { opacity: 1; visibility: visible; transition: opacity 0.45s ease; }
+.scene svg { display: block; width: 100%; height: 100%; }
+
+[data-at] { opacity: 0; transform: translateY(14px); transition: opacity 0.5s ease, transform 0.5s ease; }
+[data-at].on { opacity: 1; transform: none; }
+rect.grow[data-at] { opacity: 1; transform: scaleX(0); transform-box: fill-box; transform-origin: 0 50%; transition: transform 0.6s ease; }
+rect.grow[data-at].on { transform: scaleX(1); }
+[data-done] .fin, [data-done] .pend { transition: opacity 0.3s ease; }
+[data-done] .fin { opacity: 0; }
+[data-done].done .fin { opacity: 1; }
+[data-done].done .pend { opacity: 0; }
+
+/* SVG type */
+svg text { fill: var(--ink); font-family: var(--font-body); }
+svg .lbl { font-family: var(--font-mono); font-size: 20px; letter-spacing: 2px; fill: var(--accent); font-weight: 600; }
+svg .ttl { font-family: var(--font-display); font-weight: 800; font-stretch: 120%; font-size: 46px; letter-spacing: -0.5px; }
+svg .hero { font-family: var(--font-display); font-weight: 800; font-stretch: 125%; font-size: 78px; letter-spacing: -1.5px; }
+svg .big { font-family: var(--font-display); font-weight: 800; font-stretch: 125%; }
+svg .b { font-size: 22px; }
+svg .bb { font-size: 24px; font-weight: 700; }
+svg .s { font-size: 18px; fill: var(--muted); }
+svg .m { font-family: var(--font-mono); font-size: 16px; }
+svg .ms { font-family: var(--font-mono); font-size: 15px; fill: var(--muted); }
+svg .acc { fill: var(--accent); }
+svg .okc { fill: var(--ok); }
+svg .badc { fill: var(--bad); }
+svg .waitc { fill: var(--wait); }
+svg .skipc { fill: var(--skip); }
+svg .w6 { font-weight: 600; }
+svg .mid { text-anchor: middle; }
+/* SVG shapes */
+.bx { fill: var(--surface); stroke: var(--line); stroke-width: 2; }
+.bx.acc { fill: var(--accent-soft); stroke: var(--accent); }
+.bx.paper { fill: var(--paper); }
+.bx.okb { stroke: var(--ok); }
+.bx.badb { stroke: var(--bad); }
+.bx.waitb { stroke: var(--wait); stroke-dasharray: 4 4; }
+.bx.skipb { stroke: var(--skip); stroke-dasharray: 6 5; }
+.bx.dash { stroke-dasharray: 9 6; }
+.frame { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 10 7; }
+.edge { fill: none; stroke: var(--muted); stroke-width: 2; marker-end: url(#arr); }
+.edge.thin { stroke-dasharray: 5 5; }
+.rule { stroke: var(--line); stroke-width: 2; }
+.axis { stroke: var(--line); stroke-width: 4; }
+.arrhead { fill: var(--muted); }
+.fill-ok { fill: var(--ok); }
+.fill-bad { fill: var(--bad); }
+.fill-acc { fill: var(--accent); }
+.fill-wait { fill: var(--wait); }
+.wait-bar { fill: none; stroke: var(--wait); stroke-width: 2; stroke-dasharray: 5 4; }
+
+/* Captions and clock */
+.captions { position: absolute; left: 50%; bottom: 2.2cqi; transform: translateX(-50%); width: 88%; text-align: center; font-size: 1.75cqi; line-height: 1.35; color: var(--caption-fg); background: var(--caption-bg); padding: 0.8cqi 1.6cqi; border-radius: 0.6cqi; text-wrap: balance; }
+.captions:empty { display: none; }
+.clock { position: absolute; top: 1.6cqi; right: 2cqi; font-family: var(--font-mono); font-size: 1.05cqi; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bar { position: absolute; left: 0; bottom: 0; height: 0.35cqi; background: var(--accent); width: 0; }
+
+/* ---------- Controls ---------- */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.controls button, .chapters button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+.controls button.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); font-weight: 600; min-width: 84px; }
+.controls button:focus-visible, .chapters button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scrub { flex: 1 1 220px; min-width: 0; accent-color: var(--accent); }
+.time { font-family: var(--font-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chapters { display: flex; flex-wrap: wrap; gap: 8px; }
+.chapters button { font-size: 13px; padding: 5px 10px; }
+.chapters button.current { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+label.toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--muted); }
+
+/* ---------- Setup and script ---------- */
+.setup { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 16px 18px; display: grid; gap: 12px; }
+.setup h2, .script h2 { font-family: var(--font-display); font-stretch: 112%; font-size: 18px; margin: 0; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.fields label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.fields input { font: inherit; font-size: 15px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; min-width: 0; }
+.setup p { margin: 0; color: var(--muted); font-size: 14px; max-width: 80ch; }
+.script { display: grid; gap: 12px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 680px; }
+th, td { text-align: left; vertical-align: top; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 400; }
+td.t { font-family: var(--font-mono); white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+td.q { font-weight: 600; width: 16%; }
+td.say { width: 44%; font-size: 15px; }
+td.see { color: var(--muted); }
+.wordcount { color: var(--muted); font-size: 13px; margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.92em; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="page">
+    <h1>CI/CD Pipeline with AI</h1>
+    <p>Ticket 2 tutorial · 1:55 · press Play, then screen-record</p>
+  </header>
+
+  <div class="stage-shell" id="stageShell">
+    <div class="stage" id="stage" aria-label="Animated tutorial video">
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" class="arrhead"/>
+          </marker>
+        </defs>
+      </svg>
+
+      <!-- 0 · Title -->
+      <section class="scene" data-start="0" data-end="6">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Title card">
+          <g data-at="0">
+            <text x="80" y="230" class="lbl">TICKET 2 · CI/CD PIPELINE WITH AI</text>
+            <text x="80" y="330" class="hero">An AI-built CI/CD pipeline</text>
+            <text x="80" y="420" class="hero">for Home Assistant Core</text>
+            <text x="80" y="480" class="b" style="fill:var(--muted)">Claude Code · GitHub Copilot · GitHub Actions · Docker</text>
+            <line x1="80" x2="1520" y1="530" y2="530" class="rule"/>
+            <text x="80" y="570" class="ms">PRESENTER</text><text x="80" y="608" class="bb v-name">[Your name]</text>
+            <text x="560" y="570" class="ms">GROUP</text><text x="560" y="608" class="bb v-group">[Group ID]</text>
+            <text x="1040" y="570" class="ms">COURSE</text><text x="1040" y="608" class="bb v-course">CS 4233 · Fall 2026</text>
+          </g>
+          <g data-at="0.6">
+            <rect x="80" y="670" width="180" height="56" rx="10" class="bx"/><text x="170" y="705" class="m mid">changes</text>
+            <rect x="290" y="670" width="180" height="56" rx="10" class="bx"/><text x="380" y="705" class="m mid">build</text>
+            <rect x="500" y="670" width="180" height="56" rx="10" class="bx"/><text x="590" y="705" class="m mid">test</text>
+            <rect x="710" y="670" width="180" height="56" rx="10" class="bx"/><text x="800" y="705" class="m mid">security</text>
+            <rect x="920" y="670" width="180" height="56" rx="10" class="bx dash"/><text x="1010" y="705" class="m mid">ai-advisory</text>
+            <rect x="1130" y="670" width="180" height="56" rx="10" class="bx"/><text x="1220" y="705" class="m mid">package</text>
+            <rect x="1340" y="670" width="180" height="56" rx="10" class="bx acc"/><text x="1430" y="705" class="m mid">deploy</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 1 · The system -->
+      <section class="scene" data-start="6" data-end="18">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Home Assistant Core architecture">
+          <g data-at="0"><text x="80" y="78" class="lbl">THE SYSTEM</text><text x="80" y="130" class="ttl">What our pipeline has to protect</text></g>
+          <g data-at="0.4">
+            <rect x="600" y="230" width="400" height="290" rx="14" class="bx acc"/>
+            <text x="630" y="282" class="bb" style="font-size:30px">Core</text>
+            <text x="630" y="326" class="m">homeassistant/core.py</text>
+            <text x="630" y="356" class="m">helpers/ · config_entries.py</text>
+            <text x="630" y="386" class="m">event bus · states · services</text>
+            <text x="630" y="436" class="s">Every integration and every</text>
+            <text x="630" y="462" class="s">client goes through this layer.</text>
+          </g>
+          <g data-at="1.6">
+            <rect x="80" y="220" width="340" height="96" rx="12" class="bx"/>
+            <text x="104" y="260" class="bb">Web frontend</text><text x="104" y="292" class="ms">home-assistant-frontend</text>
+            <rect x="80" y="336" width="340" height="96" rx="12" class="bx"/>
+            <text x="104" y="376" class="bb">Mobile apps</text><text x="104" y="408" class="ms">iOS and Android companions</text>
+            <rect x="80" y="452" width="340" height="96" rx="12" class="bx"/>
+            <text x="104" y="492" class="bb">Automations, voice</text><text x="104" y="524" class="ms">users' YAML, scripts, Assist</text>
+            <path d="M420 268 C 510 268, 510 340, 598 340" class="edge"/>
+            <path d="M420 384 H598" class="edge"/>
+            <path d="M420 500 C 510 500, 510 428, 598 428" class="edge"/>
+            <text x="510" y="214" class="ms mid acc">REST /api</text>
+            <text x="510" y="236" class="ms mid acc">WebSocket</text>
+          </g>
+          <g data-at="4.2">
+            <rect x="1180" y="220" width="340" height="328" rx="14" class="bx"/>
+            <text x="1204" y="258" class="ms">homeassistant/components/</text>
+            <text x="1204" y="336" class="big" style="font-size:72px">1,521</text>
+            <text x="1204" y="374" class="bb">integrations</text>
+            <text x="1204" y="420" class="m">hue · mqtt · zwave_js</text>
+            <text x="1204" y="448" class="m">zha · sonos · met · …</text>
+            <text x="1204" y="496" class="s">each with its own tests in</text>
+            <text x="1204" y="522" class="ms">tests/components/&lt;domain&gt;/</text>
+            <path d="M1178 384 H1002" class="edge"/>
+            <text x="1090" y="370" class="ms mid acc">entity API</text>
+          </g>
+          <g data-at="7.6">
+            <rect x="80" y="590" width="460" height="150" rx="12" class="bx"/>
+            <text x="104" y="630" class="bb">Dependencies</text>
+            <text x="104" y="668" class="b"><tspan class="big" style="font-size:30px">2,408</tspan> pinned packages</text>
+            <text x="104" y="706" class="ms">requirements_all.txt</text>
+            <rect x="570" y="590" width="460" height="150" rx="12" class="bx"/>
+            <text x="594" y="630" class="bb">Tests</text>
+            <text x="594" y="668" class="b">per-integration suites + API snapshots</text>
+            <text x="594" y="706" class="ms">tests/components/api · *.ambr</text>
+            <rect x="1060" y="590" width="460" height="150" rx="12" class="bx"/>
+            <text x="1084" y="630" class="bb">Container</text>
+            <text x="1084" y="668" class="b">official HA base image + s6-overlay</text>
+            <text x="1084" y="706" class="ms">Dockerfile · web UI on port 8123</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 2 · Upstream vs ours -->
+      <section class="scene" data-start="18" data-end="33">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Upstream pipeline compared with ours">
+          <g data-at="0"><text x="80" y="78" class="lbl">BEFORE AND AFTER</text><text x="80" y="130" class="ttl">Upstream's pipeline vs. the one we added</text></g>
+          <g data-at="0.5">
+            <rect x="80" y="165" width="700" height="590" rx="14" class="bx"/>
+            <text x="110" y="210" class="bb" style="font-size:28px">Upstream (inherited)</text>
+            <text x="110" y="244" class="ms">13 workflows · 5,307 lines of YAML</text>
+          </g>
+          <g data-at="1.6">
+            <text x="110" y="300" class="m w6">ci.yaml · 24 jobs</text>
+            <text x="110" y="328" class="s">lint, mypy, pylint, split pytest, DB matrix</text>
+            <rect x="572" y="283" width="186" height="34" rx="17" class="bx waitb"/><text x="665" y="306" class="ms mid waitc">PRs only on main</text>
+          </g>
+          <g data-at="3">
+            <text x="110" y="392" class="m w6">builder.yml</text>
+            <text x="110" y="420" class="s">multi-arch images, Docker Hub, PyPI</text>
+            <rect x="572" y="375" width="186" height="34" rx="17" class="bx skipb"/><text x="665" y="398" class="ms mid skipc">skipped on fork</text>
+          </g>
+          <g data-at="4.2">
+            <text x="110" y="484" class="m w6">wheels · e2e · translations</text>
+            <text x="110" y="512" class="s">run only for the home-assistant org</text>
+            <rect x="572" y="467" width="186" height="34" rx="17" class="bx skipb"/><text x="665" y="490" class="ms mid skipc">skipped on fork</text>
+          </g>
+          <g data-at="5.2">
+            <text x="110" y="576" class="m w6">codeql.yml</text>
+            <text x="110" y="604" class="s">weekly Python code scanning</text>
+            <rect x="572" y="559" width="186" height="34" rx="17" class="bx okb"/><text x="665" y="582" class="ms mid okc">runs weekly</text>
+          </g>
+          <g data-at="6.2">
+            <text x="110" y="668" class="m w6">AI issue checks</text>
+            <text x="110" y="696" class="s">GitHub Models: language, duplicates</text>
+            <rect x="572" y="651" width="186" height="34" rx="17" class="bx badb"/><text x="665" y="674" class="ms mid badc">failed 27 / 27</text>
+          </g>
+          <g data-at="7.4">
+            <rect x="820" y="165" width="700" height="590" rx="14" class="bx acc"/>
+            <text x="850" y="210" class="bb" style="font-size:28px">Ours (team-*.yml)</text>
+            <text x="850" y="244" class="ms">8 workflows + 1 action · 489 lines</text>
+          </g>
+          <g data-at="8.4"><text x="850" y="300" class="m w6 acc">Triggers</text><text x="850" y="328" class="s">every push to main, every PR, manual runs</text></g>
+          <g data-at="9.4"><text x="850" y="392" class="m w6 acc">Scope</text><text x="850" y="420" class="s">only changed integrations + core API contract tests</text></g>
+          <g data-at="10.4"><text x="850" y="484" class="m w6 acc">Security</text><text x="850" y="512" class="s">permissions: {} by default · actions pinned to SHAs</text></g>
+          <g data-at="11.4"><text x="850" y="576" class="m w6 acc">Delivery</text><text x="850" y="604" class="s">our own image → ghcr.io/ibll → gated staging</text></g>
+          <g data-at="12.4"><text x="850" y="668" class="m w6 acc">AI</text><text x="850" y="696" class="s">advisory jobs only · never a merge gate</text></g>
+        </svg>
+      </section>
+
+      <!-- 3 · AI tools timeline -->
+      <section class="scene" data-start="33" data-end="48">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Timeline of AI tool use">
+          <g data-at="0"><text x="80" y="78" class="lbl">Q1 + Q2 · THE AI TOOLS AND WHAT WE ASKED</text><text x="80" y="130" class="ttl">GitHub Copilot first, then Claude Code</text></g>
+          <line x1="80" x2="1520" y1="200" y2="200" class="axis" data-at="0.3"/>
+          <g data-at="1.4">
+            <circle cx="180" cy="200" r="12" class="fill-wait"/>
+            <rect x="50" y="228" width="260" height="226" rx="12" class="bx"/>
+            <text x="70" y="262" class="ms w6 waitc">SEP 28 · COPILOT</text>
+            <text x="70" y="296" class="s">Generated CI templates</text>
+            <text x="70" y="322" class="s">for GitHub Actions,</text>
+            <text x="70" y="348" class="s">GitLab and Azure</text>
+            <text x="70" y="390" class="ms">7 files · 365 lines</text>
+            <text x="70" y="416" class="ms">commit 1e065bc</text>
+          </g>
+          <g data-at="3">
+            <circle cx="470" cy="200" r="12" class="fill-wait"/>
+            <rect x="340" y="228" width="260" height="226" rx="12" class="bx"/>
+            <text x="360" y="262" class="ms w6 waitc">SEP 28 · ADOPTED</text>
+            <text x="360" y="296" class="s">Switched to the</text>
+            <text x="360" y="322" class="s">generated workflows;</text>
+            <text x="360" y="348" class="s">upstream's were</text>
+            <text x="360" y="374" class="s">removed</text>
+            <text x="360" y="416" class="ms">commit b151b96</text>
+          </g>
+          <g data-at="4.6">
+            <circle cx="760" cy="200" r="12" class="fill-bad"/>
+            <rect x="630" y="228" width="260" height="226" rx="12" class="bx badb"/>
+            <text x="650" y="262" class="ms w6 badc">SEP 30 · RUNS FAIL</text>
+            <text x="650" y="296" class="s">Python 3.12/3.13, but</text>
+            <text x="650" y="322" class="s">project needs ≥ 3.14.2</text>
+            <text x="650" y="364" class="s">runs-on: self-hosted</text>
+            <text x="650" y="390" class="s">no such runner: queued</text>
+            <text x="650" y="416" class="s">24 h, then cancelled</text>
+          </g>
+          <g data-at="6.8">
+            <circle cx="1050" cy="200" r="12" class="fill-acc"/>
+            <rect x="920" y="228" width="260" height="226" rx="12" class="bx acc"/>
+            <text x="940" y="262" class="ms w6 acc">OCT 2 · CLAUDE CODE</text>
+            <text x="940" y="296" class="s">Read 13 workflows and</text>
+            <text x="940" y="322" class="s">the failed run logs,</text>
+            <text x="940" y="348" class="s">found the root causes,</text>
+            <text x="940" y="374" class="s">asked us 3 decisions,</text>
+            <text x="940" y="400" class="s">wrote a plan we approved</text>
+          </g>
+          <g data-at="8.6">
+            <circle cx="1340" cy="200" r="12" class="fill-ok"/>
+            <rect x="1210" y="228" width="260" height="226" rx="12" class="bx okb"/>
+            <text x="1230" y="262" class="ms w6 okc">OCT 2–3 · CLAUDE CODE</text>
+            <text x="1230" y="296" class="s">Wrote 8 workflows, an</text>
+            <text x="1230" y="322" class="s">action, docs, 28 issues;</text>
+            <text x="1230" y="348" class="s">linted everything.</text>
+            <text x="1230" y="390" class="s">First green run</text>
+            <text x="1230" y="416" class="s">on Oct 3</text>
+          </g>
+          <g data-at="10.2">
+            <rect x="80" y="500" width="460" height="240" rx="12" class="bx"/>
+            <text x="104" y="540" class="bb">GitHub Copilot</text>
+            <text x="104" y="570" class="ms">IN THE EDITOR</text>
+            <text x="104" y="610" class="s">Completions and chat while each</text>
+            <text x="104" y="636" class="s">teammate implements their issue.</text>
+            <text x="104" y="662" class="s">Every use is logged in</text>
+            <text x="104" y="688" class="ms">docs/pipeline/ai-log/</text>
+          </g>
+          <g data-at="11.4">
+            <rect x="570" y="500" width="460" height="240" rx="12" class="bx acc"/>
+            <text x="594" y="540" class="bb">Claude Code</text>
+            <text x="594" y="570" class="ms">REPO-WIDE AGENT IN VS CODE</text>
+            <text x="594" y="610" class="s">Reads files, runs git, gh and linters,</text>
+            <text x="594" y="636" class="s">edits many files at once. A human</text>
+            <text x="594" y="662" class="s">approves its plan before it writes,</text>
+            <text x="594" y="688" class="s">and reviews every commit.</text>
+          </g>
+          <g data-at="12.6">
+            <rect x="1060" y="500" width="460" height="240" rx="12" class="bx"/>
+            <text x="1084" y="540" class="bb">GitHub Models</text>
+            <text x="1084" y="570" class="ms">AI INSIDE THE PIPELINE</text>
+            <text x="1084" y="610" class="s">Advisory jobs: failure triage, test</text>
+            <text x="1084" y="636" class="s">gaps, dependency risk, release notes.</text>
+            <text x="1084" y="662" class="s">Output is validated, and it never</text>
+            <text x="1084" y="688" class="s">blocks a merge.</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 4 · Pipeline anatomy -->
+      <section class="scene" data-start="48" data-end="64">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Pipeline stages and their outputs">
+          <g data-at="0"><text x="80" y="78" class="lbl">Q3 · WHAT CLAUDE GENERATED</text><text x="80" y="130" class="ttl">One orchestrator, seven reusable stages</text></g>
+          <g data-at="0.5">
+            <rect x="60" y="370" width="230" height="180" rx="12" class="bx paper"/>
+            <text x="80" y="408" class="bb">Triggers</text>
+            <text x="80" y="444" class="m">push → main</text>
+            <text x="80" y="472" class="m">pull_request</text>
+            <text x="80" y="500" class="m">manual run</text>
+            <text x="80" y="528" class="ms acc">+ inject_failure</text>
+            <rect x="320" y="165" width="1210" height="580" rx="16" class="frame"/>
+            <text x="344" y="196" class="ms acc">team-pipeline.yml · permissions: {} · one run per branch at a time</text>
+            <path d="M290 460 H348" class="edge"/>
+          </g>
+          <g data-at="1.6">
+            <rect x="350" y="400" width="240" height="120" rx="12" class="bx"/>
+            <text x="368" y="438" class="bb">changes</text><text x="368" y="466" class="ms">team-changes.yml</text><text x="368" y="496" class="ms acc">→ integrations JSON</text>
+          </g>
+          <g data-at="3">
+            <path d="M590 445 H615 V270 H638" class="edge"/>
+            <rect x="640" y="215" width="240" height="120" rx="12" class="bx"/>
+            <text x="658" y="253" class="bb">build</text><text x="658" y="281" class="ms">team-build.yml</text><text x="658" y="311" class="ms acc">→ wheel + SHA256SUMS</text>
+          </g>
+          <g data-at="4">
+            <path d="M590 475 H615 V650 H638" class="edge"/>
+            <rect x="640" y="590" width="240" height="120" rx="12" class="bx"/>
+            <text x="658" y="628" class="bb">security</text><text x="658" y="656" class="ms">team-security.yml</text><text x="658" y="686" class="ms acc">→ SARIF + SBOM</text>
+          </g>
+          <g data-at="5.4">
+            <path d="M880 275 H928" class="edge"/>
+            <rect x="930" y="215" width="240" height="120" rx="12" class="bx"/>
+            <text x="948" y="253" class="bb">test</text><text x="948" y="281" class="ms">team-test.yml</text><text x="948" y="311" class="ms acc">→ junit + coverage</text>
+          </g>
+          <g data-at="6.8">
+            <path d="M840 335 V420 H928" class="edge thin"/>
+            <path d="M1050 335 V398" class="edge thin"/>
+            <path d="M840 590 V500 H928" class="edge thin"/>
+            <rect x="930" y="400" width="240" height="120" rx="12" class="bx dash"/>
+            <text x="948" y="438" class="bb">ai-advisory</text><text x="948" y="466" class="ms">team-ai-advisory.yml</text><text x="948" y="496" class="ms acc">→ advice, never a gate</text>
+          </g>
+          <g data-at="8.4">
+            <text x="1250" y="384" class="ms waitc">PRs stop before this stage</text>
+            <path d="M1170 275 H1215 V430 H1248" class="edge"/>
+            <path d="M880 680 H1215 V480 H1248" class="edge"/>
+            <rect x="1250" y="400" width="250" height="120" rx="12" class="bx"/>
+            <text x="1268" y="438" class="bb">package</text><text x="1268" y="466" class="ms">team-package.yml</text><text x="1268" y="496" class="ms acc">→ signed image digest</text>
+          </g>
+          <g data-at="10">
+            <path d="M1375 520 V588" class="edge"/>
+            <rect x="1250" y="590" width="250" height="120" rx="12" class="bx acc"/>
+            <text x="1268" y="628" class="bb">deploy</text><text x="1268" y="656" class="ms">team-deploy.yml</text><text x="1268" y="686" class="ms acc">→ needs a reviewer</text>
+          </g>
+          <g data-at="12">
+            <rect x="344" y="226" width="250" height="140" rx="10" class="bx paper"/>
+            <text x="362" y="256" class="ms w6">EVERY STAGE</text>
+            <text x="362" y="284" class="ms">read-only token</text>
+            <text x="362" y="308" class="ms">actions pinned to SHA</text>
+            <text x="362" y="332" class="ms">Python 3.14 via uv</text>
+            <text x="362" y="356" class="ms">fails on purpose on demand</text>
+          </g>
+          <g data-at="13.4">
+            <text x="344" y="736" class="ms">Live today as passing stubs; issues A1–D6 fill in each stage.</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 5 · Docker -->
+      <section class="scene" data-start="64" data-end="78">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Docker build and staging deploy">
+          <g data-at="0"><text x="80" y="78" class="lbl">DOCKER · DELIVERY STAGE (ISSUES D1–D5, IN PROGRESS)</text><text x="80" y="130" class="ttl">From Dockerfile to a gated staging deploy</text></g>
+          <g data-at="0.5"><rect x="80" y="170" width="600" height="66" rx="8" class="bx acc"/><text x="100" y="198" class="m w6">FROM amd64-homeassistant-base:2026.07.0</text><text x="100" y="222" class="ms">official base image from ghcr.io/home-assistant</text></g>
+          <g data-at="1.1"><rect x="80" y="244" width="600" height="66" rx="8" class="bx"/><text x="100" y="272" class="m w6">COPY rootfs /</text><text x="100" y="296" class="ms">s6-overlay service scripts</text></g>
+          <g data-at="1.7"><rect x="80" y="318" width="600" height="66" rx="8" class="bx"/><text x="100" y="346" class="m w6">COPY --from=go2rtc /bin/go2rtc</text><text x="100" y="370" class="ms">camera streaming binary</text></g>
+          <g data-at="2.3"><rect x="80" y="392" width="600" height="66" rx="8" class="bx"/><text x="100" y="420" class="m w6">uv pip install -r requirements.txt</text><text x="100" y="444" class="ms">core dependencies</text></g>
+          <g data-at="2.9"><rect x="80" y="466" width="600" height="66" rx="8" class="bx"/><text x="100" y="494" class="m w6">uv pip install -r requirements_all.txt</text><text x="100" y="518" class="ms">every integration's packages: 2,408 lines</text></g>
+          <g data-at="3.5"><rect x="80" y="540" width="600" height="66" rx="8" class="bx"/><text x="100" y="568" class="m w6">uv pip install -e ./homeassistant</text><text x="100" y="592" class="ms">Home Assistant itself, then compileall</text></g>
+          <g data-at="4.1"><rect x="80" y="614" width="600" height="66" rx="8" class="bx"/><text x="100" y="642" class="m w6">WORKDIR /config</text><text x="100" y="666" class="ms">config volume · web UI on port 8123</text></g>
+          <g data-at="4.8"><text x="80" y="722" class="ms waitc">Too slow on a hosted runner? Dockerfile.ci: core + frontend only.</text></g>
+
+          <g data-at="5.4"><rect x="760" y="170" width="760" height="60" rx="8" class="bx"/><text x="784" y="207" class="m">docker buildx · amd64 · GitHub Actions cache</text></g>
+          <g data-at="6.2"><path d="M1140 230 V246" class="edge"/><rect x="760" y="248" width="760" height="60" rx="8" class="bx"/><text x="784" y="285" class="m">push ghcr.io/ibll/home-assistant-core:&lt;sha&gt;</text></g>
+          <g data-at="7"><path d="M1140 308 V324" class="edge"/><rect x="760" y="326" width="760" height="60" rx="8" class="bx"/><text x="784" y="363" class="m">cosign sign · keyless, via GitHub OIDC</text></g>
+          <g data-at="7.8"><path d="M1140 386 V402" class="edge"/><rect x="760" y="404" width="760" height="60" rx="8" class="bx"/><text x="784" y="441" class="m">Trivy scan, fail on CRITICAL · image SBOM</text></g>
+          <g data-at="8.8"><path d="M1140 464 V480" class="edge"/><rect x="760" y="482" width="760" height="60" rx="8" class="bx acc"/><text x="784" y="519" class="m w6">environment: staging → a reviewer approves</text></g>
+          <g data-at="10"><path d="M1140 542 V558" class="edge"/><rect x="760" y="560" width="760" height="60" rx="8" class="bx"/><text x="784" y="597" class="m">docker run -p 8123 · GET /manifest.json, /api/onboarding</text></g>
+          <g data-at="11.4">
+            <path d="M960 620 V650" class="edge"/><path d="M1320 620 V650" class="edge"/>
+            <rect x="760" y="652" width="370" height="60" rx="8" class="bx okb"/><text x="784" y="689" class="m okc">pass → tag :staging</text>
+            <rect x="1150" y="652" width="370" height="60" rx="8" class="bx badb"/><text x="1174" y="689" class="m badc">fail → keep last good digest</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 6 · Corrections -->
+      <section class="scene" data-start="78" data-end="90">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Decisions and corrections">
+          <g data-at="0"><text x="80" y="78" class="lbl">Q4 · WHAT WE CHANGED OR CORRECTED</text><text x="80" y="130" class="ttl">Our decisions, and what checking caught</text></g>
+          <g data-at="0.4">
+            <text x="80" y="190" class="ms w6">DECIDED BY US</text>
+            <rect x="80" y="206" width="400" height="98" rx="10" class="bx"/><text x="102" y="244" class="bb">AI in the pipeline</text><text x="102" y="278" class="s">GitHub Models: free, several vendors</text>
+            <rect x="80" y="318" width="400" height="98" rx="10" class="bx"/><text x="102" y="356" class="bb">Deploy target</text><text x="102" y="390" class="s">GHCR image + reviewed staging</text>
+            <rect x="80" y="430" width="400" height="98" rx="10" class="bx"/><text x="102" y="468" class="bb">Ownership</text><text x="102" y="502" class="s">lead owns the orchestrator</text>
+          </g>
+          <g data-at="10">
+            <rect x="80" y="560" width="400" height="160" rx="10" class="bx waitb"/>
+            <text x="102" y="596" class="ms w6 waitc">FLAGGED FOR REVIEW</text>
+            <text x="102" y="630" class="s">Commit 7574e94 (AI-suggested)</text>
+            <text x="102" y="656" class="s">added actions: read to a</text>
+            <text x="102" y="682" class="s">build job. Needed? Tracked in L5.</text>
+          </g>
+          <g data-at="1.2">
+            <text x="530" y="190" class="ms w6">CAUGHT BY</text><text x="790" y="190" class="ms w6">PROBLEM</text><text x="1240" y="190" class="ms w6">FIX</text>
+          </g>
+          <g data-at="1.8"><line x1="530" x2="1520" y1="208" y2="208" class="rule"/><text x="530" y="244" class="m">zizmor --pedantic</text><text x="790" y="244" class="b">stages would cancel themselves</text><text x="790" y="272" class="s">(shared concurrency group)</text><text x="1240" y="244" class="m okc">per-stage group name</text></g>
+          <g data-at="3.2"><line x1="530" x2="1520" y1="292" y2="292" class="rule"/><text x="530" y="328" class="m">generator check</text><text x="790" y="328" class="b">"30 issues" was really 28</text><text x="1240" y="328" class="m okc">corrected</text></g>
+          <g data-at="4.6"><line x1="530" x2="1520" y1="376" y2="376" class="rule"/><text x="530" y="412" class="m">reading gh docs</text><text x="790" y="412" class="b">gh run view --log-failed</text><text x="790" y="440" class="s">refuses while the run is in progress</text><text x="1240" y="412" class="m okc">logs per job ID (A5)</text></g>
+          <g data-at="6"><line x1="530" x2="1520" y1="460" y2="460" class="rule"/><text x="530" y="496" class="m">Dockerfile review</text><text x="790" y="496" class="b">fallback image had no frontend,</text><text x="790" y="524" class="s">so /manifest.json would 404</text><text x="1240" y="496" class="m okc">add frontend (D1)</text></g>
+          <g data-at="7.4"><line x1="530" x2="1520" y1="544" y2="544" class="rule"/><text x="530" y="580" class="m">first push</text><text x="790" y="580" class="b">branch renamed dev → main;</text><text x="790" y="608" class="s">the pipeline never triggered</text><text x="1240" y="580" class="m okc">retargeted 32 files</text></g>
+          <g data-at="8.8"><line x1="530" x2="1520" y1="628" y2="628" class="rule"/><text x="530" y="664" class="m">first runs</text><text x="790" y="664" class="b">a manual run cancelled</text><text x="790" y="692" class="s">the push run on the same branch</text><text x="1240" y="664" class="m okc">rerun; split groups</text><text x="1240" y="692" class="ms">by event (next)</text></g>
+        </svg>
+      </section>
+
+      <!-- 7 · Verification -->
+      <section class="scene" data-start="90" data-end="102">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Verification runs">
+          <g data-at="0"><text x="80" y="78" class="lbl">Q5 · HOW WE VERIFIED</text><text x="80" y="130" class="ttl">Linters, a real green run, a forced failure</text></g>
+          <g data-at="0.3"><rect x="80" y="165" width="560" height="275" rx="12" class="bx paper"/></g>
+          <g data-at="0.6"><text x="104" y="208" class="m">$ yamllint team-*.yml</text></g>
+          <g data-at="1.1"><text x="104" y="238" class="m okc">✓ 0 problems</text></g>
+          <g data-at="1.7"><text x="104" y="288" class="m">$ actionlint team-*.yml</text></g>
+          <g data-at="2.2"><text x="104" y="318" class="m okc">✓ 0 errors</text></g>
+          <g data-at="2.8"><text x="104" y="368" class="m">$ zizmor --pedantic team-*.yml</text></g>
+          <g data-at="3.3"><text x="104" y="398" class="m okc">✓ No findings</text></g>
+
+          <g data-at="3.8">
+            <rect x="680" y="165" width="840" height="275" rx="12" class="bx okb"/>
+            <text x="700" y="200" class="ms w6 okc">RUN 37149515893 · PUSH TO MAIN · ✓ SUCCESS · 58 s OF COMPUTE</text>
+            <text x="700" y="237" class="ms">changes</text><text x="700" y="262" class="ms">build</text><text x="700" y="287" class="ms">security</text><text x="700" y="312" class="ms">test</text><text x="700" y="337" class="ms">ai-advisory</text><text x="700" y="362" class="ms">package</text><text x="700" y="387" class="ms">deploy</text>
+          </g>
+          <rect x="900" y="224" width="36" height="16" rx="3" class="fill-ok grow" data-at="4.2"/>
+          <rect x="972" y="249" width="156" height="16" rx="3" class="fill-ok grow" data-at="4.6"/>
+          <rect x="960" y="274" width="156" height="16" rx="3" class="fill-ok grow" data-at="4.6"/>
+          <rect x="1164" y="299" width="144" height="16" rx="3" class="fill-ok grow" data-at="5.2"/>
+          <rect x="1332" y="324" width="36" height="16" rx="3" class="fill-ok grow" data-at="5.7"/>
+          <rect x="1332" y="349" width="36" height="16" rx="3" class="fill-ok grow" data-at="5.7"/>
+          <rect x="1368" y="374" width="72" height="16" rx="3" class="wait-bar" data-at="6.1"/>
+          <rect x="1440" y="374" width="50" height="16" rx="3" class="fill-ok grow" data-at="6.6"/>
+          <g data-at="6.6"><text x="700" y="424" class="ms">deploy waited 5 m 9 s for a reviewer (EBOD13 approved), then ran 11 s</text></g>
+
+          <g data-at="7.2">
+            <rect x="80" y="470" width="1440" height="250" rx="12" class="bx badb"/>
+            <text x="104" y="510" class="ms w6 badc">RUN 37149559256 · MANUAL · inject_failure=test · ✕ FAILED, AS EXPECTED</text>
+          </g>
+          <g data-done="7.8" data-at="7.2"><rect class="bx waitb pend" x="104" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="196" y="578">changes</text><rect class="bx okb fin" x="104" y="540" width="185" height="64" rx="10"/><text class="m mid okc fin" x="196" y="578">✓ changes</text></g>
+          <g data-done="8.2" data-at="7.2"><rect class="bx waitb pend" x="304" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="396" y="578">build</text><rect class="bx okb fin" x="304" y="540" width="185" height="64" rx="10"/><text class="m mid okc fin" x="396" y="578">✓ build</text></g>
+          <g data-done="8.4" data-at="7.2"><rect class="bx waitb pend" x="504" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="596" y="578">security</text><rect class="bx okb fin" x="504" y="540" width="185" height="64" rx="10"/><text class="m mid okc fin" x="596" y="578">✓ security</text></g>
+          <g data-done="8.9" data-at="7.2"><rect class="bx waitb pend" x="704" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="796" y="578">test</text><rect class="bx badb fin" x="704" y="540" width="185" height="64" rx="10"/><text class="m mid badc fin w6" x="796" y="578">✕ test</text></g>
+          <g data-done="9.3" data-at="7.2"><rect class="bx waitb pend" x="904" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="996" y="578">ai-advisory</text><rect class="bx okb fin" x="904" y="540" width="185" height="64" rx="10"/><text class="m mid okc fin" x="996" y="578">✓ ai-advisory</text></g>
+          <g data-done="9.7" data-at="7.2"><rect class="bx waitb pend" x="1104" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="1196" y="578">package</text><rect class="bx skipb fin" x="1104" y="540" width="185" height="64" rx="10"/><text class="m mid skipc fin" x="1196" y="578">– skipped</text></g>
+          <g data-done="10" data-at="7.2"><rect class="bx waitb pend" x="1304" y="540" width="185" height="64" rx="10"/><text class="ms mid pend" x="1396" y="578">deploy</text><rect class="bx skipb fin" x="1304" y="540" width="185" height="64" rx="10"/><text class="m mid skipc fin" x="1396" y="578">– skipped</text></g>
+          <g data-at="10.4">
+            <text x="104" y="652" class="m badc">Error: Failure injected on purpose in stage 'test'</text>
+            <text x="104" y="684" class="s">The failing stage stops everything downstream: nothing was packaged or deployed.</text>
+          </g>
+        </svg>
+      </section>
+
+      <!-- 8 · Be careful -->
+      <section class="scene" data-start="102" data-end="115">
+        <svg viewBox="0 0 1600 900" role="img" aria-label="Lessons for other developers">
+          <g data-at="0"><text x="80" y="78" class="lbl">Q6 · BE CAREFUL</text><text x="80" y="130" class="ttl">What we'd tell another developer</text></g>
+          <g data-at="0.5">
+            <rect x="80" y="165" width="620" height="500" rx="14" class="bx badb"/>
+            <text x="110" y="208" class="ms w6 badc">A REAL AI FAILURE ON OUR FORK</text>
+            <text x="110" y="250" class="bb">Upstream's AI issue checker</text>
+            <text x="110" y="282" class="ms">detect-non-english-issues.yml</text>
+            <text x="110" y="306" class="ms">actions/ai-inference · gpt-4o-mini</text>
+            <text x="110" y="400" class="big badc" style="font-size:84px">27 / 27</text>
+            <text x="110" y="440" class="b">runs failed, one per issue we opened</text>
+            <rect x="110" y="470" width="560" height="160" rx="8" class="bx paper"/>
+            <text x="128" y="508" class="ms badc">##[error] Chat completion response</text>
+            <text x="128" y="534" class="ms badc">was a string and not valid JSON</text>
+            <text x="128" y="560" class="ms badc">(Unexpected token 'O', "OK…")</text>
+            <text x="128" y="604" class="s">The model answered "OK" instead of JSON.</text>
+          </g>
+          <g data-at="2.4"><text x="760" y="205" class="m w6 badc">01</text><text x="810" y="205" class="bb">Check versions</text><text x="810" y="237" class="s">Copilot chose Python 3.12; the project needs ≥ 3.14.2.</text></g>
+          <g data-at="4.2"><text x="760" y="305" class="m w6 badc">02</text><text x="810" y="305" class="bb">Check that things exist</text><text x="810" y="337" class="s">Runners, commands, flags and packages can all be invented.</text></g>
+          <g data-at="6"><text x="760" y="405" class="m w6 badc">03</text><text x="810" y="405" class="bb">Least privilege</text><text x="810" y="437" class="s">permissions: {} by default; pin every action to a SHA.</text></g>
+          <g data-at="7.8"><text x="760" y="505" class="m w6 badc">04</text><text x="810" y="505" class="bb">Validate AI output</text><text x="810" y="537" class="s">Parse it, allow-list it, keep it advisory, never a gate.</text></g>
+          <g data-at="9.8">
+            <line x1="760" x2="1520" y1="580" y2="580" class="rule"/>
+            <text x="760" y="630" class="m w6 badc">05</text><text x="810" y="632" class="bb" style="font-size:32px">If you can't explain a line,</text><text x="810" y="672" class="bb" style="font-size:32px">don't ship it.</text>
+          </g>
+          <g data-at="11.6"><text x="80" y="722" class="ms">github.com/ibll/home-assistant-core · docs/pipeline/</text></g>
+        </svg>
+      </section>
+
+      <div class="clock" id="clock">0:00 / 1:55</div>
+      <div class="captions" id="captions" aria-live="off"></div>
+      <div class="bar" id="bar"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="play" type="button">Play</button>
+    <button id="restart" type="button">Restart</button>
+    <input class="scrub" id="scrub" type="range" min="0" max="115" step="0.1" value="0" aria-label="Video position">
+    <span class="time" id="time">0:00 / 1:55</span>
+    <label class="toggle"><input type="checkbox" id="captionsToggle" checked> Captions</label>
+    <button id="fullscreen" type="button">Full screen</button>
+  </div>
+  <div class="chapters" id="chapters"></div>
+
+  <section class="setup">
+    <h2>Before you record</h2>
+    <div class="fields">
+      <label for="fName">Presenter name<input id="fName" type="text" placeholder="[Your name]"></label>
+      <label for="fGroup">Group ID<input id="fGroup" type="text" placeholder="[Group ID]"></label>
+      <label for="fCourse">Course<input id="fCourse" type="text" placeholder="CS 4233 · Fall 2026"></label>
+    </div>
+    <p>These fill the title card and captions. Turn captions off if you narrate live; leave them on for a silent recording. Space plays and pauses, and the chapter buttons jump to each question. Every number on screen comes from the repo or from our real GitHub Actions runs; the Docker stage is designed and in progress (issues D1–D5), and the video says so.</p>
+  </section>
+
+  <section class="script">
+    <h2>Script</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Time</th><th>Covers</th><th>Say</th><th>On screen</th></tr></thead>
+        <tbody id="scriptRows">
+          <tr data-scene="0"><td class="t">0:00–0:06</td><td class="q">Intro</td><td class="say">I'm <span class="v-name">[Your name]</span>, from <span class="v-group">[Group ID]</span>. This is the CI/CD pipeline we built with AI for Home Assistant Core.</td><td class="see">Title card with presenter, group and course; the seven stages.</td></tr>
+          <tr data-scene="1"><td class="t">0:06–0:18</td><td class="q">The system</td><td class="say">Home Assistant Core is huge: fifteen hundred integrations, twenty-four hundred pinned packages, and a core API that the frontend and mobile apps depend on.</td><td class="see">Architecture: clients → core API ← 1,521 integrations; dependencies, tests, container.</td></tr>
+          <tr data-scene="2"><td class="t">0:18–0:33</td><td class="q">Existing vs. ours</td><td class="say">The fork came with thirteen upstream workflows, over five thousand lines. On a fork, most of them skip, and after our branch rename none run on push. So we added eight small workflows of our own that do.</td><td class="see">Upstream workflows with their real status on the fork, beside what ours adds.</td></tr>
+          <tr data-scene="3"><td class="t">0:33–0:48</td><td class="q">Q1 + Q2: AI tools, what we asked</td><td class="say">We used two AI tools. GitHub Copilot wrote our first pipeline, and it failed: the wrong Python version, and a runner that never existed. Claude Code then read the repo and the failed logs, and planned a replacement with us.</td><td class="see">Timeline from Copilot's templates to Claude Code's green run; the role of Copilot, Claude Code and GitHub Models.</td></tr>
+          <tr data-scene="4"><td class="t">0:48–1:04</td><td class="q">Q3: what the AI generated</td><td class="say">Claude generated one orchestrator calling seven reusable stages, each with read-only permissions, pinned actions, and Python 3.14. Pull requests stop after the checks. Every stage must leave evidence: a change list, a wheel, test reports, scans, and a signed image.</td><td class="see">Stage graph with each workflow file and the artifact it produces.</td></tr>
+          <tr data-scene="5"><td class="t">1:04–1:18</td><td class="q">Docker</td><td class="say">Docker is our delivery stage, being built now. It uses Home Assistant's official base image, pushes to our registry, signs and scans it, waits for human approval, then smoke-tests the running container and rolls back on failure.</td><td class="see">Dockerfile layers on the left; build, push, sign, scan, approve, smoke test, pass or rollback on the right.</td></tr>
+          <tr data-scene="6"><td class="t">1:18–1:30</td><td class="q">Q4: what we corrected</td><td class="say">We made the key decisions ourselves. Checks caught real mistakes: stages that cancelled themselves, a wrong issue count, a command that fails mid-run, and a pipeline still pointing at our old branch.</td><td class="see">Our three decisions; a table of what caught each mistake and the fix.</td></tr>
+          <tr data-scene="7"><td class="t">1:30–1:42</td><td class="q">Q5: how we verified</td><td class="say">To verify: three linters, zero findings. The push run passed all seven stages, then waited for my approval to deploy. A forced test failure skipped package and deploy.</td><td class="see">Linter output; timing chart of the real green run; the real forced-failure run.</td></tr>
+          <tr data-scene="8"><td class="t">1:42–1:55</td><td class="q">Q6: be careful</td><td class="say">Be careful. Upstream's own AI workflow failed on every issue we opened, because the model replied 'OK' instead of JSON. Validate AI output, keep it advisory, and never ship a line you can't explain.</td><td class="see">The real 27/27 AI failure and its error, beside five rules.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="wordcount" id="wordcount"></p>
+  </section>
+</div>
+
+<script>
+(function () {
+  const DURATION = 115;
+  const stage = document.getElementById("stage");
+  const scenes = Array.from(stage.querySelectorAll(".scene"));
+  const playBtn = document.getElementById("play");
+  const scrub = document.getElementById("scrub");
+  const timeEl = document.getElementById("time");
+  const clockEl = document.getElementById("clock");
+  const barEl = document.getElementById("bar");
+  const capEl = document.getElementById("captions");
+  const capToggle = document.getElementById("captionsToggle");
+  const chaptersEl = document.getElementById("chapters");
+  const chapterNames = ["Intro", "System", "Before/after", "Q1+Q2 AI tools", "Q3 Stages", "Docker", "Q4 Fixes", "Q5 Verify", "Q6 Careful"];
+  const TOTAL = "1:55";
+
+  let t = 0;
+  let playing = false;
+  let last = null;
+
+  const fmt = (s) => {
+    const whole = Math.min(DURATION, Math.max(0, Math.floor(s)));
+    return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+  };
+
+  let cues = [];
+  function buildCues() {
+    cues = [];
+    let totalWords = 0;
+    document.querySelectorAll("#scriptRows tr").forEach((row) => {
+      const scene = scenes[Number(row.dataset.scene)];
+      const start = Number(scene.dataset.start);
+      const end = Number(scene.dataset.end);
+      const text = row.querySelector(".say").textContent.trim();
+      const parts = text.split(/(?<=[.!?:])\s+(?=[A-Z])/);
+      const words = parts.map((p) => p.split(/\s+/).length);
+      const sum = words.reduce((a, b) => a + b, 0);
+      totalWords += sum;
+      let at = start;
+      parts.forEach((p, i) => {
+        const len = ((end - start) * words[i]) / sum;
+        cues.push({ start: at, end: at + len, text: p });
+        at += len;
+      });
+    });
+    document.getElementById("wordcount").textContent =
+      totalWords + " words in " + TOTAL + ", about " + Math.round(totalWords / (DURATION / 60)) + " words per minute (a clear speaking pace is 140–160).";
+  }
+
+  scenes.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = chapterNames[i] + " · " + fmt(Number(s.dataset.start));
+    b.addEventListener("click", () => seek(Number(s.dataset.start)));
+    chaptersEl.appendChild(b);
+  });
+  const chapterBtns = Array.from(chaptersEl.children);
+
+  function render() {
+    scenes.forEach((s, i) => {
+      const a = Number(s.dataset.start);
+      const b = Number(s.dataset.end);
+      const active = t >= a && (t < b || (b === DURATION && t >= b));
+      s.classList.toggle("active", active);
+      chapterBtns[i].classList.toggle("current", active);
+      const local = t - a;
+      s.querySelectorAll("[data-at]").forEach((el) => el.classList.toggle("on", local >= Number(el.dataset.at)));
+      s.querySelectorAll("[data-done]").forEach((el) => el.classList.toggle("done", local >= Number(el.dataset.done)));
+    });
+    const cue = capToggle.checked ? cues.find((c) => t >= c.start && t < c.end) : null;
+    const capText = cue ? cue.text : "";
+    if (capEl.textContent !== capText) capEl.textContent = capText;
+    const label = fmt(t) + " / " + TOTAL;
+    timeEl.textContent = label;
+    clockEl.textContent = label;
+    barEl.style.width = (t / DURATION) * 100 + "%";
+    if (document.activeElement !== scrub) scrub.value = t.toFixed(1);
+  }
+
+  function frame(now) {
+    if (!playing) return;
+    if (last !== null) t += (now - last) / 1000;
+    last = now;
+    if (t >= DURATION) {
+      t = DURATION;
+      setPlaying(false);
+    }
+    render();
+    if (playing) requestAnimationFrame(frame);
+  }
+
+  function setPlaying(on) {
+    playing = on;
+    playBtn.textContent = on ? "Pause" : "Play";
+    last = null;
+    if (on) {
+      if (t >= DURATION) t = 0;
+      requestAnimationFrame(frame);
+    }
+  }
+
+  function seek(to) {
+    t = Math.min(DURATION, Math.max(0, to));
+    last = null;
+    render();
+  }
+
+  playBtn.addEventListener("click", () => setPlaying(!playing));
+  document.getElementById("restart").addEventListener("click", () => { seek(0); setPlaying(true); });
+  scrub.addEventListener("input", () => seek(Number(scrub.value)));
+  capToggle.addEventListener("change", render);
+  document.getElementById("fullscreen").addEventListener("click", () => {
+    const shell = document.getElementById("stageShell");
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else if (shell.requestFullscreen) {
+      shell.requestFullscreen().catch(() => {});
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && !(e.target instanceof HTMLInputElement && e.target.type === "text")) {
+      e.preventDefault();
+      setPlaying(!playing);
+    }
+  });
+
+  const fields = [
+    { id: "fName", cls: "v-name", fallback: "[Your name]" },
+    { id: "fGroup", cls: "v-group", fallback: "[Group ID]" },
+    { id: "fCourse", cls: "v-course", fallback: "CS 4233 · Fall 2026" },
+  ];
+  function applyFields() {
+    fields.forEach((f) => {
+      const v = document.getElementById(f.id).value.trim() || f.fallback;
+      document.querySelectorAll("." + f.cls).forEach((el) => { el.textContent = v; });
+    });
+    buildCues();
+    render();
+  }
+  fields.forEach((f) => {
+    const input = document.getElementById(f.id);
+    try {
+      const saved = localStorage.getItem("pipelineVideo." + f.id);
+      if (saved) input.value = saved;
+    } catch (e) {}
+    input.addEventListener("input", () => {
+      try { localStorage.setItem("pipelineVideo." + f.id, input.value); } catch (e) {}
+      applyFields();
+    });
+  });
+
+  applyFields();
+})();
+</script>
+</body>
+</html>
