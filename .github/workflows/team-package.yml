@@ -1,0 +1,37 @@
+name: Team pipeline / Package
+
+# Stub from issue L0. Issues D1 (Docker build), D2 (push and sign) and D3
+# (image scan) fill this stage in. D2 adds `packages: write` and
+# `id-token: write` to this job only.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    outputs:
+      image:
+        description: Full image reference with digest, consumed by the deploy stage.
+        value: ${{ jobs.image.outputs.image }}
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-package-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: Build container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read # To check out the repository
+    outputs:
+      image: ${{ steps.stub.outputs.image }}
+    steps:
+      - name: Stub (replaced by issues D1-D3)
+        id: stub
+        run: |
+          echo "image=" >> "$GITHUB_OUTPUT"
+          echo "### Package stage (stub)" >> "$GITHUB_STEP_SUMMARY"

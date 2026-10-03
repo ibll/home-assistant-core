@@ -1,0 +1,51 @@
+name: Team pipeline / Test
+
+# Stub from issue L0. Issues B1 (targeted tests), B2 (contract suite),
+# B3 (reports) and B4 (flaky handling) fill this stage in.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    inputs:
+      inject-failure:
+        description: Stage to fail on purpose, see team-pipeline.yml.
+        type: string
+        default: none
+      integrations:
+        description: JSON list of changed integration domains.
+        type: string
+        default: "[]"
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Targeted and contract tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inject failure
+        uses: ./.github/actions/team-inject-failure
+        with:
+          stage: test
+          inject-failure: ${{ inputs.inject-failure }}
+      - name: Stub (replaced by issues B1-B4)
+        env:
+          INTEGRATIONS: ${{ inputs.integrations }}
+        run: |
+          {
+            echo "### Test stage (stub)"
+            echo "Would test integrations: ${INTEGRATIONS} plus the contract suite"
+          } >> "$GITHUB_STEP_SUMMARY"

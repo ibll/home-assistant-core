@@ -1,0 +1,54 @@
+name: Team pipeline / AI advisory
+
+# Stub from issue L0. Issues A5 (failure triage), B5 (test-gap advisor),
+# C6 (dependency-risk reviewer) and D6 (release notes) each add one job here.
+# Rules for every AI job are in docs/pipeline/README.md: read-only
+# permissions plus `models: read`, untrusted text passed as data, output
+# validated before use, never a required check.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    inputs:
+      build-result:
+        description: Result of the build stage (success, failure, skipped).
+        type: string
+        required: true
+      test-result:
+        description: Result of the test stage.
+        type: string
+        required: true
+      security-result:
+        description: Result of the security stage.
+        type: string
+        required: true
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-ai-advisory-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  summary:
+    name: Stage results
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Stub (replaced by issues A5, B5, C6, D6)
+        env:
+          BUILD_RESULT: ${{ inputs.build-result }}
+          TEST_RESULT: ${{ inputs.test-result }}
+          SECURITY_RESULT: ${{ inputs.security-result }}
+        run: |
+          {
+            echo "### AI advisory (stub)"
+            echo "| Stage | Result |"
+            echo "|---|---|"
+            echo "| build | ${BUILD_RESULT} |"
+            echo "| test | ${TEST_RESULT} |"
+            echo "| security | ${SECURITY_RESULT} |"
+          } >> "$GITHUB_STEP_SUMMARY"

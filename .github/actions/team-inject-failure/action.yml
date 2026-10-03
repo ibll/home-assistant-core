@@ -1,0 +1,25 @@
+name: Inject failure
+description: >-
+  Fails the job on purpose when the team pipeline was dispatched with
+  inject_failure set to this stage. Used to prove the pipeline fails in the
+  right place and blocks everything downstream.
+
+inputs:
+  stage:
+    description: The stage this step runs in (lint, test, security or smoke).
+    required: true
+  inject-failure:
+    description: The inject_failure value passed down from team-pipeline.yml.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Fail on purpose
+      if: inputs.stage == inputs.inject-failure
+      shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+      run: |
+        echo "::error::Failure injected on purpose in stage '${STAGE}'"
+        exit 1

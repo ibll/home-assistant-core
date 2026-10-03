@@ -1,0 +1,52 @@
+name: Team pipeline / Security
+
+# Stub from issue L0. Issues C1 (secrets), C2 (dependency vulnerabilities),
+# C3 (new-dependency tracker), C4 (workflow hardening) and C5 (SBOM) fill
+# this stage in.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    inputs:
+      inject-failure:
+        description: Stage to fail on purpose, see team-pipeline.yml.
+        type: string
+        default: none
+      requirements-changed:
+        description: Whether any requirements file or manifest requirement changed.
+        type: string
+        default: "false"
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Security scans
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inject failure
+        uses: ./.github/actions/team-inject-failure
+        with:
+          stage: security
+          inject-failure: ${{ inputs.inject-failure }}
+      - name: Stub (replaced by issues C1-C5)
+        env:
+          REQUIREMENTS_CHANGED: ${{ inputs.requirements-changed }}
+        run: |
+          {
+            echo "### Security stage (stub)"
+            echo "Requirements changed: ${REQUIREMENTS_CHANGED}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,53 @@
+name: Team pipeline / Deploy
+
+# Stub from issue L0. Issues D4 (staging deploy and smoke test) and D5
+# (rollback and release) fill this stage in. The `staging` environment
+# requires the tech lead's approval once issue L1 is done.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    inputs:
+      inject-failure:
+        description: Stage to fail on purpose, see team-pipeline.yml.
+        type: string
+        default: none
+      image:
+        description: Image reference from the package stage.
+        type: string
+        default: ""
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging:
+    name: Deploy to staging and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inject failure
+        uses: ./.github/actions/team-inject-failure
+        with:
+          stage: smoke
+          inject-failure: ${{ inputs.inject-failure }}
+      - name: Stub (replaced by issues D4-D5)
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          {
+            echo "### Deploy stage (stub)"
+            echo "Image: ${IMAGE:-none yet}"
+          } >> "$GITHUB_STEP_SUMMARY"

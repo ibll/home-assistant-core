@@ -1,0 +1,114 @@
+name: Team pipeline
+
+# The course team's pipeline. It runs next to the upstream CI (ci.yaml) and
+# never modifies it. Each stage is a reusable workflow in team-<stage>.yml;
+# see docs/pipeline/README.md for how to add one.
+
+# yamllint disable-line rule:truthy
+on:
+  push:
+    branches:
+      - dev
+  pull_request: ~
+  workflow_dispatch:
+    inputs:
+      inject_failure:
+        description: "Make one stage fail on purpose (checklist Q14)"
+        default: none
+        type: choice
+        options:
+          - none
+          - lint
+          - test
+          - security
+          - smoke
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Changes
+    # Upstream has its own CI; every later stage needs this job, so this guard
+    # keeps the whole pipeline on the course fork.
+    if: github.repository == 'ibll/home-assistant-core'
+    uses: ./.github/workflows/team-changes.yml
+    permissions:
+      contents: read # To check out the repository
+
+  build:
+    name: Build
+    needs: changes
+    uses: ./.github/workflows/team-build.yml
+    permissions:
+      contents: read # To check out the repository
+    with:
+      # `inputs` is empty on push and pull_request events.
+      inject-failure: ${{ inputs.inject_failure || 'none' }}
+      integrations: ${{ needs.changes.outputs.integrations }}
+
+  test:
+    name: Test
+    needs:
+      - changes
+      - build
+    uses: ./.github/workflows/team-test.yml
+    permissions:
+      contents: read # To check out the repository
+    with:
+      inject-failure: ${{ inputs.inject_failure || 'none' }}
+      integrations: ${{ needs.changes.outputs.integrations }}
+
+  security:
+    name: Security
+    needs: changes
+    uses: ./.github/workflows/team-security.yml
+    permissions:
+      contents: read # To check out the repository
+    with:
+      inject-failure: ${{ inputs.inject_failure || 'none' }}
+      requirements-changed: ${{ needs.changes.outputs.requirements-changed }}
+
+  ai-advisory:
+    name: AI advisory
+    needs:
+      - changes
+      - build
+      - test
+      - security
+    # Runs after failures too, since triaging failures is its main job. It is
+    # advisory only and must never be a required check.
+    if: ${{ !cancelled() && needs.changes.result == 'success' }}
+    uses: ./.github/workflows/team-ai-advisory.yml
+    permissions:
+      contents: read # To check out the repository
+    with:
+      build-result: ${{ needs.build.result }}
+      test-result: ${{ needs.test.result }}
+      security-result: ${{ needs.security.result }}
+
+  package:
+    name: Package
+    needs:
+      - build
+      - test
+      - security
+    # Only push to dev and manual runs publish an image; pull requests stop
+    # after verification.
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/team-package.yml
+    permissions:
+      contents: read # To check out the repository
+
+  deploy:
+    name: Deploy
+    needs: package
+    uses: ./.github/workflows/team-deploy.yml
+    permissions:
+      contents: read # To check out the repository
+    with:
+      inject-failure: ${{ inputs.inject_failure || 'none' }}
+      image: ${{ needs.package.outputs.image }}

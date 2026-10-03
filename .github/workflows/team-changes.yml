@@ -1,0 +1,52 @@
+name: Team pipeline / Changes
+
+# Stub from issue L0. Issue A1 replaces the stub step with real change
+# detection; keep the output names so the orchestrator does not change.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    outputs:
+      integrations:
+        description: JSON list of the integration domains that changed.
+        value: ${{ jobs.detect.outputs.integrations }}
+      core-changed:
+        description: Whether files outside homeassistant/components changed.
+        value: ${{ jobs.detect.outputs.core-changed }}
+      requirements-changed:
+        description: Whether any requirements file or manifest requirement changed.
+        value: ${{ jobs.detect.outputs.requirements-changed }}
+      workflows-changed:
+        description: Whether any file under .github changed.
+        value: ${{ jobs.detect.outputs.workflows-changed }}
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-changes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # To check out the repository
+    outputs:
+      integrations: ${{ steps.stub.outputs.integrations }}
+      core-changed: ${{ steps.stub.outputs.core-changed }}
+      requirements-changed: ${{ steps.stub.outputs.requirements-changed }}
+      workflows-changed: ${{ steps.stub.outputs.workflows-changed }}
+    steps:
+      - name: Stub outputs (replaced by issue A1)
+        id: stub
+        run: |
+          {
+            echo 'integrations=[]'
+            echo 'core-changed=false'
+            echo 'requirements-changed=false'
+            echo 'workflows-changed=false'
+          } >> "$GITHUB_OUTPUT"
