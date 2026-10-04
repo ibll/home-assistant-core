@@ -49,6 +49,16 @@
 - Link to developer documentation pull request: 
 - Link to frontend pull request: 
 
+## AI Usage
+
+<!--
+  Documenting AI usage helps us understand what tools to support
+  And how effective they are in helping contribution.
+-->
+
+- Mention AI tools used, if any, to help write this PR.
+- Provide guiding prompts and information, or link relevant pages
+
 ## Checklist
 <!--
   Put an `x` in the boxes that apply. You can also fill these out after
