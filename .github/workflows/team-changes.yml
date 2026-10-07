@@ -1,7 +1,6 @@
 name: Team pipeline / Changes
 
-# Stub from issue L0. Issue A1 replaces the stub step with real change
-# detection; keep the output names so the orchestrator does not change.
+# Change detection for the stages that consume this reusable workflow.
 
 # yamllint disable-line rule:truthy
 on:
@@ -36,17 +35,71 @@ jobs:
     permissions:
       contents: read # To check out the repository
     outputs:
-      integrations: ${{ steps.stub.outputs.integrations }}
-      core-changed: ${{ steps.stub.outputs.core-changed }}
-      requirements-changed: ${{ steps.stub.outputs.requirements-changed }}
-      workflows-changed: ${{ steps.stub.outputs.workflows-changed }}
+      integrations: ${{ steps.detect.outputs.integrations }}
+      core-changed: ${{ steps.detect.outputs.core-changed }}
+      requirements-changed: ${{ steps.detect.outputs.requirements-changed }}
+      workflows-changed: ${{ steps.detect.outputs.workflows-changed }}
     steps:
-      - name: Stub outputs (replaced by issue A1)
-        id: stub
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute changed areas
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
-          {
-            echo 'integrations=[]'
-            echo 'core-changed=false'
-            echo 'requirements-changed=false'
-            echo 'workflows-changed=false'
-          } >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          base = os.environ["BASE_SHA"]
+          head = os.environ["HEAD_SHA"]
+          try:
+            changed = subprocess.check_output(
+              ["git", "diff", "--name-only", base, head], text=True
+            ).splitlines()
+          except subprocess.CalledProcessError:
+            changed = subprocess.check_output(
+              ["git", "show", "--format=", "--name-only", head], text=True
+            ).splitlines()
+
+          integrations = set()
+          for path in changed:
+            parts = path.split("/")
+            if len(parts) >= 3 and parts[0] in {"homeassistant", "tests"}:
+              if parts[0] == "homeassistant" and parts[1] != "components":
+                continue
+              if parts[0] == "tests" and parts[1] != "components":
+                continue
+              if parts[1] == "components":
+                integrations.add(parts[2])
+
+          core_changed = any(
+            path.startswith("homeassistant/")
+            and not path.startswith("homeassistant/components/")
+            for path in changed
+          )
+          requirements_changed = any(
+            path == "pyproject.toml"
+            or path.startswith("requirements")
+            or path.endswith("/manifest.json")
+            for path in changed
+          )
+          workflows_changed = any(path.startswith(".github/") for path in changed)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write(f"integrations={json.dumps(sorted(integrations))}\n")
+            output.write(f"core-changed={str(core_changed).lower()}\n")
+            output.write(f"requirements-changed={str(requirements_changed).lower()}\n")
+            output.write(f"workflows-changed={str(workflows_changed).lower()}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write("### Changed areas\n\n")
+            summary.write(f"- Integrations: `{json.dumps(sorted(integrations))}`\n")
+            summary.write(f"- Core changed: `{str(core_changed).lower()}`\n")
+            summary.write(f"- Requirements changed: `{str(requirements_changed).lower()}`\n")
+            summary.write(f"- Workflows changed: `{str(workflows_changed).lower()}`\n")
+          PY

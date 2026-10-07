@@ -1,7 +1,6 @@
 name: Team pipeline / Test
 
-# Stub from issue L0. Issues B1 (targeted tests), B2 (contract suite),
-# B3 (reports) and B4 (flaky handling) fill this stage in.
+# Targeted integration tests and the fixed contract suite.
 
 # yamllint disable-line rule:truthy
 on:
@@ -25,8 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Targeted and contract tests
+  targeted:
+    name: Targeted integration tests
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -35,17 +34,192 @@ jobs:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Set up Python
+        uses: ./.github/actions/setup-uv-python
+        with:
+          python-version: "3.14"
+          uv-version: "0.12.17"
+      - name: Install test requirements
+        run: |
+          PYTHON="$(uv python find 3.14)"
+          uv pip install --python "$PYTHON" -r requirements_test.txt
+      - name: Install changed integration requirements
+        if: inputs.integrations != '[]'
+        env:
+          INTEGRATIONS: ${{ inputs.integrations }}
+        run: |
+          PYTHON="$(uv python find 3.14)"
+          mapfile -t DOMAINS < <(python3 -c 'import json, sys; print("\n".join(json.loads(sys.argv[1])))' "$INTEGRATIONS")
+          uv run --no-project --python "$PYTHON" python -m script.install_integration_requirements "${DOMAINS[@]}"
       - name: Inject failure
         uses: ./.github/actions/team-inject-failure
         with:
           stage: test
           inject-failure: ${{ inputs.inject-failure }}
-      - name: Stub (replaced by issues B1-B4)
+      - name: Run targeted integration tests
+        id: targeted
+        if: inputs.integrations != '[]'
+        continue-on-error: true
         env:
           INTEGRATIONS: ${{ inputs.integrations }}
         run: |
+          set +e
+          PYTHON="$(uv python find 3.14)"
+          mapfile -t DOMAINS < <(python3 -c 'import json, sys; print("\n".join(json.loads(sys.argv[1])))' "$INTEGRATIONS")
+          TEST_PATHS=()
+          COV_ARGS=()
+          for domain in "${DOMAINS[@]}"; do
+            TEST_PATHS+=("tests/components/$domain")
+            COV_ARGS+=("--cov=homeassistant.components.$domain")
+          done
+          uv run --no-project --python "$PYTHON" pytest "${TEST_PATHS[@]}" \
+            --junitxml=junit.xml "${COV_ARGS[@]}" --cov-report=xml
+          first_result=$?
+          if [ "$first_result" -ne 0 ]; then
+            cp .pytest_cache/v/cache/lastfailed flaky-tests.json
+            uv run --no-project --python "$PYTHON" pytest --lf "${TEST_PATHS[@]}" --tb=short
+            retry_result=$?
+            if [ "$retry_result" -eq 0 ]; then
+              python3 - <<'PY'
+              import json
+              from pathlib import Path
+
+              tests = json.loads(Path("flaky-tests.json").read_text())
+              Path("flaky.json").write_text(
+                  json.dumps({"tests": sorted(tests), "count": len(tests)}) + "\n"
+              )
+              PY
+              printf '%s\n' '### Flaky tests' 'Rerun passed for the targeted suite.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            exit "$retry_result"
+          fi
+          printf '{"tests": [], "count": 0}\n' > flaky.json
+      - name: Enforce targeted coverage
+        if: inputs.integrations != '[]' && steps.targeted.outcome == 'success'
+        run: |
+          PYTHON="$(uv python find 3.14)"
+          uv run --no-project --python "$PYTHON" coverage report --fail-under=90
+      - name: Render test summary
+        if: ${{ !cancelled() }}
+        env:
+          TARGETED_RESULT: ${{ steps.targeted.outcome || 'skipped' }}
+          CONTRACT_RESULT: not-run
+        run: |
           {
-            echo "### Test stage (stub)"
-            echo "Would test integrations: ${INTEGRATIONS} plus the contract suite"
+            echo "### Test stage"
+            echo "| Suite | Result |"
+            echo "|---|---|"
+            echo "| Targeted integrations | ${TARGETED_RESULT} |"
+            echo "| Contract suite | ${CONTRACT_RESULT} |"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload targeted results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-targeted-${{ github.sha }}
+          path: |
+            junit*.xml
+            coverage.xml
+            flaky*.json
+          if-no-files-found: warn
+      - name: Fail if targeted tests failed
+        if: ${{ !cancelled() }}
+        env:
+          TARGETED_RESULT: ${{ steps.targeted.outcome || 'success' }}
+        run: |
+          [ "$TARGETED_RESULT" = success ] || [ "$TARGETED_RESULT" = skipped ]
+  contract:
+    name: Contract suite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: ./.github/actions/setup-uv-python
+        with:
+          python-version: "3.14"
+          uv-version: "0.12.17"
+      - name: Install test requirements
+        run: |
+          PYTHON="$(uv python find 3.14)"
+          uv pip install --python "$PYTHON" -r requirements_test.txt
+      - name: Inject failure
+        uses: ./.github/actions/team-inject-failure
+        with:
+          stage: test
+          inject-failure: ${{ inputs.inject-failure }}
+      - name: Run contract suite
+        run: |
+          set +e
+          PYTHON="$(uv python find 3.14)"
+          uv run --no-project --python "$PYTHON" pytest \
+            tests/test_core.py tests/test_config_entries.py \
+            tests/components/api tests/components/websocket_api \
+            tests/helpers/test_entity.py --junitxml=junit-contract.xml
+          first_result=$?
+          if [ "$first_result" -ne 0 ]; then
+            cp .pytest_cache/v/cache/lastfailed flaky-contract-tests.json
+            uv run --no-project --python "$PYTHON" pytest --lf --tb=short
+            retry_result=$?
+            if [ "$retry_result" -eq 0 ]; then
+              python3 - <<'PY'
+              import json
+              from pathlib import Path
+
+              tests = json.loads(Path("flaky-contract-tests.json").read_text())
+              Path("flaky-contract.json").write_text(
+                  json.dumps({"tests": sorted(tests), "count": len(tests)}) + "\n"
+              )
+              PY
+              printf '%s\n' '### Flaky contract tests' 'Rerun passed for the contract suite.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            exit "$retry_result"
+          fi
+          exit 0
+      - name: Upload contract results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-contract-${{ github.sha }}
+          path: |
+            junit-contract.xml
+            flaky-contract.json
+          if-no-files-found: warn
+
+  reports:
+    name: Test reports
+    needs:
+      - targeted
+      - contract
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read # To download test artifacts
+    steps:
+      - name: Download targeted results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: test-results-targeted-${{ github.sha }}
+          path: results
+          merge-multiple: true
+      - name: Download contract results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: test-results-contract-${{ github.sha }}
+          path: results
+          merge-multiple: true
+      - name: Upload combined test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-${{ github.sha }}
+          path: results
+          if-no-files-found: warn
