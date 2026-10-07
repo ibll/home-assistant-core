@@ -1,8 +1,7 @@
 name: Team pipeline / Security
 
-# Stub from issue L0. Issues C1 (secrets), C2 (dependency vulnerabilities),
-# C3 (new-dependency tracker), C4 (workflow hardening) and C5 (SBOM) fill
-# this stage in.
+# Issues C1 (secrets), C3 (new-dependency tracker), C4 (workflow hardening)
+# and C5 (SBOM) add more checks to this stage.
 
 # yamllint disable-line rule:truthy
 on:
@@ -38,15 +37,38 @@ jobs:
         with:
           persist-credentials: false
       - name: Inject failure
-        uses: ./.github/actions/team-inject-failure
+        uses: $/.github/actions/team-inject-failure
         with:
           stage: security
           inject-failure: ${{ inputs.inject-failure }}
-      - name: Stub (replaced by issues C1-C5)
+      - name: Get uv version
+        id: uv-version
+        run: echo "version=$(grep '^uv==' requirements.txt | cut -d'=' -f3)" >> "$GITHUB_OUTPUT"
+      - name: Set up uv and Python
+        uses: $/.github/actions/setup-uv-python
+        with:
+          python-version: "3.14"
+          uv-version: ${{ steps.uv-version.outputs.version }}
+      - name: Audit core requirements
+        run: uvx --from pip-audit pip-audit -r requirements.txt --format json > pip-audit.json
+      - name: Review dependency changes
+        if: inputs.requirements-changed == 'true' && github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pip-audit
+          path: pip-audit.json
+          if-no-files-found: warn
+      - name: Summarize security scans
         env:
           REQUIREMENTS_CHANGED: ${{ inputs.requirements-changed }}
         run: |
           {
-            echo "### Security stage (stub)"
+            echo "### Security scans"
             echo "Requirements changed: ${REQUIREMENTS_CHANGED}"
+            echo "The core requirements audit report is available as the pip-audit artifact."
           } >> "$GITHUB_STEP_SUMMARY"
