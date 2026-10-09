@@ -1,8 +1,8 @@
 name: Team pipeline / Package
 
-# Stub from issue L0. Issues D1 (Docker build), D2 (push and sign) and D3
-# (image scan) fill this stage in. D2 adds `packages: write` and
-# `id-token: write` to this job only.
+# Issue D1 (Docker build spike) builds the image here without pushing it.
+# D2 (push and sign) and D3 (image scan) extend this job. D2 adds
+# `packages: write` and `id-token: write` to this job only.
 
 # yamllint disable-line rule:truthy
 on:
@@ -20,6 +20,14 @@ concurrency:
   group: ${{ github.workflow }}-package-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # The Dockerfile to build. D1 decides between the upstream `Dockerfile`
+  # (every integration's requirements) and a lighter `Dockerfile.ci`;
+  # see docs/pipeline/package-deploy.md, "Image build".
+  DOCKERFILE: Dockerfile
+  # Local tag only; D2 replaces it with the GHCR name.
+  IMAGE_TAG: team-homeassistant:ci
+
 jobs:
   image:
     name: Build container image
@@ -28,10 +36,83 @@ jobs:
     permissions:
       contents: read # To check out the repository
     outputs:
-      image: ${{ steps.stub.outputs.image }}
+      # Empty until D2 pushes the image and can report its digest.
+      image: ""
     steps:
-      - name: Stub (replaced by issues D1-D3)
-        id: stub
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read base image version from builder.yml
+        id: base
+        # Upstream keeps the version in one place; reading it here means a
+        # sync from upstream bumps our base image too.
         run: |
-          echo "image=" >> "$GITHUB_OUTPUT"
-          echo "### Package stage (stub)" >> "$GITHUB_STEP_SUMMARY"
+          version="$(yq '.env.BASE_IMAGE_VERSION' .github/workflows/builder.yml)"
+          if [[ ! "${version}" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::Unexpected BASE_IMAGE_VERSION in builder.yml: '${version}'"
+            exit 1
+          fi
+          echo "Base image version: ${version}"
+          echo "build-from=ghcr.io/home-assistant/amd64-homeassistant-base:${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Free disk space for the image build
+        # The full image installs every integration's requirements, which can
+        # outgrow the runner's free disk. Remove preinstalled toolchains this
+        # job never uses, and log the free space before and after.
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker image prune --all --force
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Record build start time
+        id: start
+        run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Build image (not pushed)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          platforms: linux/amd64
+          build-args: |
+            BUILD_FROM=${{ steps.base.outputs.build-from }}
+          push: false
+          # Load into the runner's Docker so the next step can measure it.
+          load: true
+          tags: ${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=team-package-amd64
+          cache-to: type=gha,mode=max,scope=team-package-amd64
+
+      - name: Record build time, image size and outcome
+        if: always() && steps.start.outcome == 'success'
+        env:
+          START_EPOCH: ${{ steps.start.outputs.epoch }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          BUILD_FROM: ${{ steps.base.outputs.build-from }}
+        run: |
+          duration=$(( $(date +%s) - START_EPOCH ))
+          size="n/a"
+          if [[ "${BUILD_OUTCOME}" == "success" ]]; then
+            size_bytes="$(docker image inspect "${IMAGE_TAG}" --format '{{.Size}}')"
+            size="$(numfmt --to=iec --suffix=B "${size_bytes}") (${size_bytes} bytes)"
+          fi
+          {
+            echo "### Package stage: image build (D1)"
+            echo ""
+            echo "| Measure | Value |"
+            echo "|---|---|"
+            echo "| Dockerfile | \`${DOCKERFILE}\` |"
+            echo "| Base image | \`${BUILD_FROM}\` |"
+            echo "| Build outcome | ${BUILD_OUTCOME} |"
+            echo "| Build time | $(( duration / 60 ))m $(( duration % 60 ))s (${duration}s) |"
+            echo "| Image size (uncompressed) | ${size} |"
+            echo "| Free disk after build | $(df -h / --output=avail | tail -1 | tr -d ' ') |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Build ${BUILD_OUTCOME} in ${duration}s, image size ${size}"
