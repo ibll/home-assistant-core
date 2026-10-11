@@ -116,6 +116,7 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
 
   Artifact: `model-comparison.md` (answers Q4).
 - **L5 Checklist evaluation and final report.** Fill in the upgraded checklist below with evidence links.
+- **L6 Drift check** (`team-drift.yml`, weekly; added Oct 11). Fails when the `staging` reviewer or `main`'s required checks disappear, when the README's pin table or stage list no longer matches the workflows, or when the zizmor version drifts from `.pre-commit-config.yaml`. Also reports upstream workflow and requirement changes since the fork. Artifact: `drift-report.md`.
 
 ### Member A: change detection, build, quality
 
@@ -212,13 +213,14 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
 | N8 | Are flaky tests detected and reported instead of silently retried? | B | B4 output | Flaky list in the metrics |
 | N9 | Is every AI-generated change attributed and reviewed by a human before merge (OHF AI policy, `AI_POLICY.md`)? | Lead | PR history | Trailer present + an approving human review |
 | N10 | Is the pipeline documented well enough for a new member to add a stage? | All | `docs/pipeline/` | A peer adds a dummy stage using only the docs |
+| N11 | Do settings, docs and tool versions still match the pipeline (drift)? | Lead (L6) | `drift-report.md` | Weekly drift run green; an injected settings change fails it |
 
 ## Order of work
 
 1. **Week 1:** L0, L1, A1, and the D1 spike. Every member writes their stage as a stub that passes.
 2. **Week 2:** A2–A4, B1–B3, C1–C3, D2–D3. L2 failure injection.
 3. **Week 3:** the AI jobs (A5, B5, C6, D6), C4–C5, B4, D4–D5. L3 metrics begin collecting.
-4. **Week 4:** L4 model comparison, final metrics, scored checklist, and each member's walkthrough (Q16).
+4. **Week 4:** L4 model comparison, L6 drift check, final metrics, scored checklist, and each member's walkthrough (Q16).
 
 ## Files to be created (no upstream files modified)
 
@@ -226,6 +228,7 @@ The tech lead assigns Members A–D to the four collaborators (`ibll`, `odinsean
 - `.github/workflows/team-{changes,build,test,security,package,deploy,ai-advisory}.yml`
 - `.github/workflows/team-metrics.yml`
 - `.github/workflows/team-model-compare.yml`
+- `.github/workflows/team-drift.yml`
 - `.github/ai-prompts/*.prompt.yml`: versioned prompts so the models can be compared
 - `Dockerfile.ci`: only if D1 needs it
 - `docs/pipeline/README.md`
