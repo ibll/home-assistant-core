@@ -6,6 +6,7 @@ Home Assistant Core fork, and how we use AI while building and running it.
 - [PLAN.md](PLAN.md): the full plan, with findings about the existing pipeline and every issue.
 - [checklist.md](checklist.md): the evaluation checklist the tech lead scores us with.
 - [issues/](issues/): one file per issue, used to create the GitHub issues.
+- [adr/](adr/README.md): decision records: what went wrong, the options we weighed and what we chose.
 - [ai-log/](ai-log/): one entry per issue on how AI was used. Start from [ai-log/TEMPLATE.md](ai-log/TEMPLATE.md).
 - [video/index.html](video/index.html): the animated 1:55 tutorial for Ticket 2, with its script. Open it in a browser and screen-record it.
 
