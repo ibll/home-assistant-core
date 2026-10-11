@@ -4,7 +4,11 @@
 
 The security stage scans every commit introduced by a pull request or push
 with Gitleaks 8.30.1. Pull requests use the base-to-head commit range; pushes
-use the `before..after` range. An initial push scans all available history.
+use the `before..after` range. Manual runs (including `inject_failure` runs)
+have neither, so they scan `<sha>~1..<sha>`, which is everything the commit
+being built added. It never scans the full history. Home Assistant's history
+holds 1,240 findings, mostly fake tokens in test fixtures. On Oct 11 a full
+scan failed every manual run and opened 1,240 code-scanning alerts.
 The scanner is downloaded from its versioned GitHub release and checked against
 the published SHA-256 checksum before execution.
 
