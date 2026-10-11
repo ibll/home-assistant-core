@@ -1,6 +1,6 @@
 # Issue drafts
 
-One file per GitHub issue, 28 in total. Issues are disabled on the fork until
+One file per GitHub issue, 29 in total (L6 was added on Oct 11). Issues are disabled on the fork until
 issue L1 turns them on. Then the tech lead reviews these drafts and creates
 them:
 
@@ -21,6 +21,7 @@ The script strips them from the issue body.
 | [L3](L3.md) | Metrics collector: pipeline, DORA and AI metrics | 3 | L0 |  |
 | [L4](L4.md) | Model comparison: same prompt, several models, scored | 4 | L0 | yes |
 | [L5](L5.md) | Final evaluation: score the checklist with evidence | 4 | L2, L3, L4 |  |
+| [L6](L6.md) | Drift check: settings, docs, tool versions and upstream | 4 | L1, L3 |  |
 | [A1](A1.md) | Change detection: which integrations and files changed | 1 | L0 |  |
 | [A2](A2.md) | Lint gate: ruff, codespell, yamllint and hassfest on changed files | 2 | A1 |  |
 | [A3](A3.md) | Build artifact: wheel, sdist and checksums | 2 | A2 |  |

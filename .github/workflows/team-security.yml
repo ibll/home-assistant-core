@@ -21,7 +21,7 @@ permissions: {}
 # The stage suffix keeps this group distinct from the caller's group in
 # team-pipeline.yml; sharing it would make the stage cancel itself.
 concurrency:
-  group: ${{ github.workflow }}-security-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-security-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -21,7 +21,7 @@ permissions: {}
 # The stage suffix keeps this group distinct from the caller's group in
 # team-pipeline.yml; sharing it would make the stage cancel itself.
 concurrency:
-  group: ${{ github.workflow }}-build-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-build-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Inject failure
-        uses: ./.github/actions/team-inject-failure
+        uses: ./.github/actions/team-inject-failure # zizmor: ignore[self-repository] actionlint lacks $/ support
         with:
           stage: lint
           inject-failure: ${{ inputs.inject-failure }}
