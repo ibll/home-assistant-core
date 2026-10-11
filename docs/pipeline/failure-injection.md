@@ -86,14 +86,20 @@ They show the security stage stopping the pipeline on real problems.
   to the orchestrator's concurrency group and to every stage's group.
   Two runs of the same event on the same branch still replace each other,
   which is the point of the group.
+- **A real check can hide an injected failure.** After C1 merged, Gitleaks
+  scanned the full history on every manual run (1,240 findings) and failed
+  the security stage first. Run 38165813211 never got near deploy. Since
+  manual runs now scan only the commit being built, an injected failure is
+  the only failure again. When a stage's real checks land, rerun its mode and
+  confirm the injected stage is the *only* one that fails.
 - **The approval gate holds.** A deploy can't reach the smoke test until the
   staging reviewer approves. One push run waited 8 days for approval before it
   was cancelled.
 
 ## Still to do
 
-- [ ] Run `smoke` again once the concurrency fix is merged, and approve the
-      staging deployment.
+- [ ] Run `smoke` again once the Gitleaks scan-range fix is merged, and
+      approve the staging deployment. (The concurrency fix is merged.)
 - [ ] Repeat all four modes once the real stages are merged (A2, B1, C1, C2,
       D4). The injection step must stay first in every stage; each branch has
       kept it so far.

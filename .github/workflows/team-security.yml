@@ -66,7 +66,10 @@ jobs:
           elif [[ -n "$PUSH_BEFORE" && "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
             commit_range="${PUSH_BEFORE}..${PUSH_AFTER}"
           else
-            commit_range="--all"
+            # Manual runs have no base commit. Scan only what the commit being
+            # built added: the full upstream history has 1,240 findings, mostly
+            # fake tokens in test fixtures.
+            commit_range="${PUSH_AFTER}~1..${PUSH_AFTER}"
           fi
 
           set +e
