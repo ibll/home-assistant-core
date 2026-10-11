@@ -58,7 +58,7 @@ real checks.
 | `test` | `da3948f` | Test | package, deploy | changes, build, security, ai-advisory | ✅ as expected | [37149559256](https://github.com/ibll/home-assistant-core/actions/runs/37149559256) |
 | `lint` | `1bb449a` | Build | test, package, deploy | changes, security, ai-advisory | ✅ as expected | [38164316906](https://github.com/ibll/home-assistant-core/actions/runs/38164316906) |
 | `security` | `1bb449a` | Security | package, deploy | changes, build, test, ai-advisory | ✅ as expected | [38164362989](https://github.com/ibll/home-assistant-core/actions/runs/38164362989) |
-| `smoke` | `1bb449a` | — | — | all stages up to deploy passed | ⚠️ cancelled while waiting for approval: the PR #31 merge push started a run in the same concurrency group | [38164426398](https://github.com/ibll/home-assistant-core/actions/runs/38164426398) |
+| `smoke` | `1bb449a` | Deploy, after EBOD13 approved staging | nothing after it | all 6 earlier stages | ✅ as expected (attempt 2; attempt 1 was cancelled while waiting for approval, see below) | [38164426398](https://github.com/ibll/home-assistant-core/actions/runs/38164426398) |
 
 In the `lint` run, security still runs because it doesn't depend on build.
 That's correct: one failing stage shouldn't hide another stage's findings.
@@ -98,8 +98,10 @@ They show the security stage stopping the pipeline on real problems.
 
 ## Still to do
 
-- [ ] Run `smoke` again once the Gitleaks scan-range fix is merged, and
-      approve the staging deployment. (The concurrency fix is merged.)
+- [x] Run `smoke` and approve the staging deployment: attempt 2 of
+      38164426398 failed at the smoke step as expected.
+- [ ] Optional: repeat `smoke` on current `main`. The re-run replayed commit
+      `1bb449a`, which predates Gitleaks and the concurrency fix.
 - [ ] Repeat all four modes once the real stages are merged (A2, B1, C1, C2,
       D4). The injection step must stay first in every stage; each branch has
       kept it so far.
