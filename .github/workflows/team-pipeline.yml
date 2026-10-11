@@ -35,14 +35,14 @@ jobs:
     # Upstream has its own CI; every later stage needs this job, so this guard
     # keeps the whole pipeline on the course fork.
     if: github.repository == 'ibll/home-assistant-core'
-    uses: ./.github/workflows/team-changes.yml
+    uses: ./.github/workflows/team-changes.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
 
   build:
     name: Build
     needs: changes
-    uses: ./.github/workflows/team-build.yml
+    uses: ./.github/workflows/team-build.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
     with:
@@ -55,7 +55,7 @@ jobs:
     needs:
       - changes
       - build
-    uses: ./.github/workflows/team-test.yml
+    uses: ./.github/workflows/team-test.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
     with:
@@ -65,9 +65,10 @@ jobs:
   security:
     name: Security
     needs: changes
-    uses: ./.github/workflows/team-security.yml
+    uses: ./.github/workflows/team-security.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
+      security-events: write # To upload Gitleaks results to code scanning
     with:
       inject-failure: ${{ inputs.inject_failure || 'none' }}
       requirements-changed: ${{ needs.changes.outputs.requirements-changed }}
@@ -82,7 +83,7 @@ jobs:
     # Runs after failures too, since triaging failures is its main job. It is
     # advisory only and must never be a required check.
     if: ${{ !cancelled() && needs.changes.result == 'success' }}
-    uses: ./.github/workflows/team-ai-advisory.yml
+    uses: ./.github/workflows/team-ai-advisory.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
     with:
@@ -99,14 +100,14 @@ jobs:
     # Only push to main and manual runs publish an image; pull requests stop
     # after verification.
     if: github.event_name != 'pull_request'
-    uses: ./.github/workflows/team-package.yml
+    uses: ./.github/workflows/team-package.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
 
   deploy:
     name: Deploy
     needs: package
-    uses: ./.github/workflows/team-deploy.yml
+    uses: ./.github/workflows/team-deploy.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
     with:
