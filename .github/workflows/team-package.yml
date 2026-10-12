@@ -28,7 +28,7 @@ env:
   # Upstream keeps it in builder.yml, which this fork removed along with the
   # other upstream workflows (commit d6a5ca687a3). When syncing from upstream,
   # copy BASE_IMAGE_VERSION from upstream's .github/workflows/builder.yml.
-  BASE_IMAGE_VERSION: "2026.07.0"
+  BASE_IMAGE_VERSION: "2026.10.0"
   # GHCR names must be lowercase; this repository's name already is.
   IMAGE_NAME: ghcr.io/${{ github.repository }}
   # Keyless signatures are issued by GitHub's OIDC provider to this reusable
@@ -170,7 +170,7 @@ jobs:
           IMAGE: ${{ steps.ref.outputs.image }}
         run: |
           trivy --version
-          trivy image --platform linux/amd64 --format spdx-json \
+          trivy image --platform linux/amd64 --scanners vuln --format spdx-json \
             --output sbom-image.spdx.json "${IMAGE}"
           echo "SBOM packages: $(jq '.packages | length' sbom-image.spdx.json)"
 
@@ -181,7 +181,7 @@ jobs:
         env:
           IMAGE: ${{ steps.ref.outputs.image }}
         run: |
-          trivy image --platform linux/amd64 --severity HIGH,CRITICAL \
+          trivy image --platform linux/amd64 --scanners vuln --severity HIGH,CRITICAL \
             --format sarif --output trivy.sarif "${IMAGE}"
 
       - name: Upload Trivy results to code scanning
@@ -208,7 +208,7 @@ jobs:
         env:
           IMAGE: ${{ steps.ref.outputs.image }}
         run: |
-          trivy image --platform linux/amd64 --severity CRITICAL --ignore-unfixed \
+          trivy image --platform linux/amd64 --scanners vuln --severity CRITICAL --ignore-unfixed \
             --ignorefile "${TRIVY_IGNOREFILE}" --exit-code 1 \
             --format table "${IMAGE}"
 

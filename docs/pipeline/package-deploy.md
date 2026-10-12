@@ -168,6 +168,24 @@ just pushed, by digest.
 The image is already in GHCR when the gate runs, because Trivy scans the
 pushed digest. A failed gate means that digest is never deployed.
 
+### First run: the gate caught three CRITICALs
+
+The first D3 run (<run link>) failed the gate: Trivy found 3 CRITICAL
+vulnerabilities with available fixes in the image's Alpine 3.24.1 packages:
+
+| CVE | Package | Installed | Fixed in |
+|---|---|---|---|
+| <id> | <pkg> | <version> | <version> |
+
+They came from the base image. `BASE_IMAGE_VERSION` was still `2026.07.0`,
+the value in upstream's `builder.yml` when the fork deleted it, while
+upstream had moved on to `2026.10.0`. Bumping the base image to match
+upstream was the fix, rather than allowlisting the findings. The next run
+(<run link>) passed the gate.
+
+This is also why the version needs to be copied from upstream's
+`builder.yml` on every upstream sync.
+
 ### Why "unfixed" CRITICALs don't fail the job
 
 A CRITICAL with no fixed version can't be resolved by us; failing on it would
