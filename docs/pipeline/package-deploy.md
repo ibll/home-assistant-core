@@ -11,10 +11,12 @@ Issue D1 (#23). Workflow: `.github/workflows/team-package.yml`, job `image`.
 
 ### What it does
 
-1. Reads `BASE_IMAGE_VERSION` from `.github/workflows/builder.yml` with `yq`
-   and fails if the value doesn't look like a version. Upstream bumps that
-   value when it updates the base image, so syncing from upstream keeps our
-   base in step without a second hard-coded version.
+1. Takes the base image version from `BASE_IMAGE_VERSION` in the workflow's
+   `env` and fails if it doesn't look like a version. The issue asked to read
+   it from upstream's `builder.yml`, and the first spike run did. The fork
+   then removed the upstream workflows (commit `d6a5ca687a3`), so the version
+   now lives in `team-package.yml`, with a comment saying where to copy it
+   from when syncing with upstream.
 2. Frees disk space by removing toolchains the job never uses (.NET, Android,
    GHC, CodeQL), and logs `df` before and after.
 3. Builds the upstream `Dockerfile` for `linux/amd64` with

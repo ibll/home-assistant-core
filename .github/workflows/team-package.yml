@@ -25,6 +25,11 @@ env:
   # (every integration's requirements) and a lighter `Dockerfile.ci`;
   # see docs/pipeline/package-deploy.md, "Image build".
   DOCKERFILE: Dockerfile
+  # Base image version from https://github.com/home-assistant/docker.
+  # Upstream keeps it in builder.yml, which this fork removed along with the
+  # other upstream workflows (commit d6a5ca687a3). When syncing from upstream,
+  # copy BASE_IMAGE_VERSION from upstream's .github/workflows/builder.yml.
+  BASE_IMAGE_VERSION: "2026.07.0"
   # Local tag only; D2 replaces it with the GHCR name.
   IMAGE_TAG: team-homeassistant:ci
 
@@ -44,18 +49,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Read base image version from builder.yml
+      - name: Resolve base image
         id: base
-        # Upstream keeps the version in one place; reading it here means a
-        # sync from upstream bumps our base image too.
         run: |
-          version="$(yq '.env.BASE_IMAGE_VERSION' .github/workflows/builder.yml)"
-          if [[ ! "${version}" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]+$ ]]; then
-            echo "::error::Unexpected BASE_IMAGE_VERSION in builder.yml: '${version}'"
+          if [[ ! "${BASE_IMAGE_VERSION}" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]+$ ]]; then
+            echo "::error::Unexpected BASE_IMAGE_VERSION: '${BASE_IMAGE_VERSION}'"
             exit 1
           fi
-          echo "Base image version: ${version}"
-          echo "build-from=ghcr.io/home-assistant/amd64-homeassistant-base:${version}" >> "$GITHUB_OUTPUT"
+          echo "build-from=ghcr.io/home-assistant/amd64-homeassistant-base:${BASE_IMAGE_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Free disk space for the image build
         # The full image installs every integration's requirements, which can
