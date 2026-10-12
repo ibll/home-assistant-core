@@ -205,12 +205,14 @@ jobs:
         id: gate
         # Only CRITICAL findings that already have a fix fail the job, minus
         # the reviewed exceptions in TRIVY_IGNOREFILE.
+        # `--table-mode detailed` prints only the failing packages, not a summary
+        # row for each of the image's ~3,000 Python packages.
         env:
           IMAGE: ${{ steps.ref.outputs.image }}
         run: |
           trivy image --platform linux/amd64 --scanners vuln --severity CRITICAL --ignore-unfixed \
             --ignorefile "${TRIVY_IGNOREFILE}" --exit-code 1 \
-            --format table "${IMAGE}"
+            --format table --table-mode detailed "${IMAGE}"
 
       - name: Record build time, image size and outcome
         if: always() && steps.start.outcome == 'success'
