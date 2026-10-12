@@ -16,4 +16,20 @@
 #       pins this version; revisit when they bump it.
 #     expired_at: 2026-12-31
 
-vulnerabilities: []
+vulnerabilities:
+  # Found by the second D3 run, after the base image bump.
+  - id: CVE-2026-102268
+    statement: >-
+      PyJWT 2.13.0, pinned by Home Assistant core in requirements.txt and
+      homeassistant/package_constraints.txt, which our team rules don't let
+      us edit. Upstream has already moved to PyJWT 2.15.1, so the next sync
+      from upstream fixes it. If this entry expires first, sync from upstream
+      rather than extending it.
+    expired_at: 2026-11-12
+  - id: CVE-2025-68121
+    statement: >-
+      Go standard library (crypto/tls) inside the go2rtc 1.9.14 binary, built
+      with Go 1.25.6. 1.9.14 is the newest go2rtc release and upstream Home
+      Assistant ships the same one, so there is no fixed version to take yet.
+      Re-check for a go2rtc release built with Go 1.25.7 or later at expiry.
+    expired_at: 2026-11-30

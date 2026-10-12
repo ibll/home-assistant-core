@@ -180,8 +180,18 @@ vulnerabilities with available fixes in the image's Alpine 3.24.1 packages:
 They came from the base image. `BASE_IMAGE_VERSION` was still `2026.07.0`,
 the value in upstream's `builder.yml` when the fork deleted it, while
 upstream had moved on to `2026.10.0`. Bumping the base image to match
-upstream was the fix, rather than allowlisting the findings. The next run
-(<run link>) passed the gate.
+upstream was the fix, rather than allowlisting the findings.
+
+The second run (<run link>) had no Alpine findings left, but failed on two
+more CRITICALs with fixes, both outside what this team may change:
+
+| CVE | Where | Installed | Fixed in | Decision |
+|---|---|---|---|---|
+| CVE-2026-102268 | PyJWT (Python) | 2.13.0 | 2.14.0 | Allowlisted until 2026-11-12. Pinned by core; upstream is already on 2.15.1, so the next upstream sync fixes it. |
+| CVE-2025-68121 | Go `stdlib` in `bin/go2rtc` | Go 1.25.6 | Go 1.25.7 | Allowlisted until 2026-11-30. go2rtc 1.9.14 is the newest release and upstream ships it too; no fix to take yet. |
+
+Both entries are in `.github/team-trivyignore.yaml` with these reasons. The
+third run (<run link>) passed the gate.
 
 This is also why the version needs to be copied from upstream's
 `builder.yml` on every upstream sync.
@@ -213,8 +223,10 @@ both SBOMs use SPDX JSON so they can be compared.
 
 ### Results
 
-| Run | HIGH/CRITICAL findings | Unfixed-CRITICAL gate | Allowlisted |
-|---|---|---|---|
-| <run link> | <n> | <pass / fail> | <n> |
+| Run | Base image | HIGH/CRITICAL findings | Unfixed-CRITICAL gate | Allowlisted |
+|---|---|---|---|---|
+| <run link> | 2026.07.0 | <n> | fail (3 Alpine) | 0 |
+| <run link> | 2026.10.0 | <n> | fail (PyJWT, go2rtc) | 0 |
+| <run link> | 2026.10.0 | <n> | pass | 2 |
 
 Security tab: <link to the code scanning results filtered by tool Trivy>
