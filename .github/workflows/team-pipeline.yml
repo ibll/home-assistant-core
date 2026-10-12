@@ -107,6 +107,7 @@ jobs:
       contents: read # To check out the repository
       packages: write # To push the image to GHCR
       id-token: write # To get the OIDC token cosign uses for keyless signing
+      security-events: write # To upload Trivy results to code scanning
 
   deploy:
     name: Deploy

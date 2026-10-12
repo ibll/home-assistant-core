@@ -101,6 +101,7 @@ merges or deploys.
 | docker/metadata-action | `dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0` |
 | docker/build-push-action | `c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0` |
 | sigstore/cosign-installer | `6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2` |
+| github/codeql-action/upload-sarif | `2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2` |
 
 For an action that is not listed, look up the commit SHA of its latest
 release tag and add the pin to this table in your PR.

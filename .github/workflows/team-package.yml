@@ -1,7 +1,7 @@
 name: Team pipeline / Package
 
 # Issue D1 builds the image, D2 pushes it to GHCR and signs it, and D3
-# (image scan) extends this job.
+# scans it with Trivy and generates its SBOM.
 
 # yamllint disable-line rule:truthy
 on:
@@ -35,6 +35,13 @@ env:
   # workflow, so verification pins both. See "Registry and signing".
   COSIGN_ISSUER: https://token.actions.githubusercontent.com
   COSIGN_IDENTITY_REGEXP: ^https://github\.com/${{ github.repository }}/\.github/workflows/team-package\.yml@refs/
+  # Trivy is installed from its release tarball, pinned by version and
+  # checksum, instead of through aquasecurity/trivy-action, whose tags were
+  # hijacked in March 2026. See "Image scan" in package-deploy.md.
+  TRIVY_VERSION: "0.74.0"
+  TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
+  # Accepted CRITICAL findings, each with a reason and an expiry date.
+  TRIVY_IGNOREFILE: .github/team-trivyignore.yaml
 
 jobs:
   image:
@@ -45,6 +52,7 @@ jobs:
       contents: read # To check out the repository
       packages: write # To push the image to GHCR
       id-token: write # To get the OIDC token cosign uses for keyless signing
+      security-events: write # To upload Trivy results to code scanning
     outputs:
       image: ${{ steps.ref.outputs.image }}
     steps:
@@ -146,6 +154,64 @@ jobs:
             --certificate-identity-regexp "${COSIGN_IDENTITY_REGEXP}" \
             "${IMAGE}" | jq '.[0].optional'
 
+      - name: Install Trivy
+        run: |
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfL -o "${RUNNER_TEMP}/${tarball}" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${tarball}"
+          echo "${TRIVY_SHA256}  ${RUNNER_TEMP}/${tarball}" | sha256sum --check --strict
+          mkdir -p "${RUNNER_TEMP}/trivy"
+          tar -xzf "${RUNNER_TEMP}/${tarball}" -C "${RUNNER_TEMP}/trivy" trivy
+          echo "${RUNNER_TEMP}/trivy" >> "$GITHUB_PATH"
+
+      - name: Generate image SBOM
+        # Trivy reads the GHCR login from the "Log in to GHCR" step.
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          trivy --version
+          trivy image --platform linux/amd64 --format spdx-json \
+            --output sbom-image.spdx.json "${IMAGE}"
+          echo "SBOM packages: $(jq '.packages | length' sbom-image.spdx.json)"
+
+      - name: Scan image for vulnerabilities (SARIF)
+        id: sarif
+        # Report every HIGH and CRITICAL finding, fixed or not, so code
+        # scanning shows the full picture. The next step decides pass/fail.
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          trivy image --platform linux/amd64 --severity HIGH,CRITICAL \
+            --format sarif --output trivy.sarif "${IMAGE}"
+
+      - name: Upload Trivy results to code scanning
+        if: always() && steps.sarif.outcome == 'success'
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
+
+      - name: Upload scan results and SBOM
+        if: always() && steps.ref.outputs.image != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-scan
+          path: |
+            trivy.sarif
+            sbom-image.spdx.json
+          if-no-files-found: warn
+
+      - name: Fail on unfixed CRITICAL vulnerabilities
+        id: gate
+        # Only CRITICAL findings that already have a fix fail the job, minus
+        # the reviewed exceptions in TRIVY_IGNOREFILE.
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          trivy image --platform linux/amd64 --severity CRITICAL --ignore-unfixed \
+            --ignorefile "${TRIVY_IGNOREFILE}" --exit-code 1 \
+            --format table "${IMAGE}"
+
       - name: Record build time, image size and outcome
         if: always() && steps.start.outcome == 'success'
         env:
@@ -155,6 +221,7 @@ jobs:
           IMAGE: ${{ steps.ref.outputs.image }}
           TAGS: ${{ steps.meta.outputs.tags }}
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          GATE_OUTCOME: ${{ steps.gate.outcome }}
         run: |
           duration=$(( $(date +%s) - START_EPOCH ))
           size="n/a"
@@ -182,4 +249,8 @@ jobs:
             echo "| Image | \`${IMAGE:-not pushed}\` |"
             echo "| Tags | $(tr '\n' ' ' <<< "${TAGS}") |"
             echo "| Signature verified | ${VERIFY_OUTCOME:-skipped} |"
+            if [[ -f trivy.sarif ]]; then
+              echo "| HIGH/CRITICAL findings (SARIF) | $(jq '[.runs[].results[]] | length' trivy.sarif) |"
+            fi
+            echo "| Unfixed-CRITICAL gate | ${GATE_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"

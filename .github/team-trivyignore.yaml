@@ -1,0 +1,19 @@
+# Reviewed exceptions for the image scan in team-package.yml (issue D3).
+#
+# The scan fails on CRITICAL vulnerabilities that already have a fix. Add an
+# entry here only after checking the finding doesn't affect us, or that the
+# fix can't be taken yet. Every entry needs a reason (`statement`) and an
+# expiry date, after which the scan fails on it again and someone re-checks it.
+#
+# Format: https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+#
+# vulnerabilities:
+#   - id: CVE-2026-00000
+#     paths:
+#       - "usr/local/lib/python3.14/site-packages/example"
+#     statement: >-
+#       Only affects the X feature, which Home Assistant never calls. Upstream
+#       pins this version; revisit when they bump it.
+#     expired_at: 2026-12-31
+
+vulnerabilities: []

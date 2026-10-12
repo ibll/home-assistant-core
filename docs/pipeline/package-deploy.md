@@ -139,3 +139,64 @@ Output from a run on `main`:
   by default, so the pushed digest is an image index that contains the
   amd64 image and the attestation. cosign signs that index.
 
+
+## Image scan
+
+Issue D3 (#25). Same job, after signing. Every package run scans the image it
+just pushed, by digest.
+
+### What it does
+
+1. **Installs Trivy** from its GitHub release tarball, pinned to
+   `TRIVY_VERSION` and checked against `TRIVY_SHA256` before it is unpacked.
+   We don't use `aquasecurity/trivy-action`: its tags were hijacked in a
+   supply-chain attack in March 2026, so a pinned binary with a checksum is
+   the smaller trust surface.
+2. **Generates the image SBOM** (`sbom-image.spdx.json`, SPDX JSON) with
+   `trivy image --format spdx-json`.
+3. **Scans for vulnerabilities** in both the OS packages (Alpine) and the
+   Python packages in the image, and writes every HIGH and CRITICAL finding,
+   fixed or not, to `trivy.sarif`.
+4. **Uploads the SARIF to code scanning** under the category `trivy-image`,
+   so results show in the Security tab next to Gitleaks.
+5. **Uploads `trivy.sarif` and `sbom-image.spdx.json`** as the `image-scan`
+   artifact. Steps 4 and 5 run even if a later step fails.
+6. **Gates the job:** fails if any CRITICAL vulnerability **with an available
+   fix** remains, except the reviewed exceptions in
+   `.github/team-trivyignore.yaml`. A failure here stops the deploy stage.
+
+The image is already in GHCR when the gate runs, because Trivy scans the
+pushed digest. A failed gate means that digest is never deployed.
+
+### Why "unfixed" CRITICALs don't fail the job
+
+A CRITICAL with no fixed version can't be resolved by us; failing on it would
+block every run until upstream ships a fix. Those still appear in the SARIF
+and the Security tab. A CRITICAL that does have a fix is something we, or
+upstream, can act on, so that one blocks.
+
+### Allowlisting a finding
+
+Add it to `.github/team-trivyignore.yaml` with:
+
+- `id`: the CVE or GHSA ID,
+- `statement`: why it's acceptable (not reachable, waiting on upstream, …),
+- `expired_at`: a date after which the scan fails on it again.
+
+The allowlist only affects the gate. The SARIF keeps every finding, so
+allowlisted items stay visible.
+
+### SBOM and C5
+
+Issue D3 asks to generate the image SBOM with C5's reusable step. C5 hasn't
+landed yet, so this stage uses Trivy, which it already has installed. When C5
+merges, either switch this step to C5's step, or keep Trivy and make sure
+both SBOMs use SPDX JSON so they can be compared.
+
+### Results
+
+| Run | HIGH/CRITICAL findings | Unfixed-CRITICAL gate | Allowlisted |
+|---|---|---|---|
+| <run link> | <n> | <pass / fail> | <n> |
+
+Security tab: <link to the code scanning results filtered by tool Trivy>
