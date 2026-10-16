@@ -127,17 +127,34 @@ cosign verify ghcr.io/ibll/home-assistant-core@sha256:<digest> \
 The pipeline runs the same check with `--certificate-identity-regexp`, so
 runs from feature branches verify too.
 
-Output from a run on `main`:
+Output from the pipeline's own verify step, run [38855004458](https://github.com/ibll/home-assistant-core/actions/runs/38855004458) on
+`d2-push-and-sign`. The certificate identity there ends in
+`@refs/heads/d2-push-and-sign`, because the run came from that branch:
 
 ```text
-<paste the command and its output here>
+<paste the "Verify signature" step output here>
 ```
 
 ### Evidence
 
-- Run: <run link>
-- Package: <link to the package under the repo's Packages>
-- Image: `ghcr.io/ibll/home-assistant-core@sha256:<digest>`
+From run [38855004458](https://github.com/ibll/home-assistant-core/actions/runs/38855004458) (commit `4f6d78e`):
+
+| | |
+|---|---|
+| Image | `ghcr.io/ibll/home-assistant-core@sha256:0cf057d5e89c7b3500dac6a8c61c4a734d68f128e9ad25c47c05a96c5a9b165a` |
+| Tags | `:4f6d78e99e2b451a2e445e385e9c8fee58a9e817`, `:d2-push-and-sign` |
+| Size in GHCR (compressed) | 693 MB (725,828,695 bytes); 2.1 GB uncompressed (see "Image build") |
+| Build and push time | 16 s, with 45% of the build cached from earlier runs |
+| Signature verified | success |
+| Package | [ghcr.io/ibll/home-assistant-core](https://github.com/ibll/home-assistant-core/pkgs/container/home-assistant-core) |
+
+To verify this exact image yourself:
+
+```bash
+cosign verify ghcr.io/ibll/home-assistant-core@sha256:0cf057d5e89c7b3500dac6a8c61c4a734d68f128e9ad25c47c05a96c5a9b165a \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/ibll/home-assistant-core/.github/workflows/team-package.yml@refs/heads/d2-push-and-sign
+```
 
 ### Notes
 
