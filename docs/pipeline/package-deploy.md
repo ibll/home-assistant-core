@@ -132,8 +132,21 @@ Output from the pipeline's own verify step, run [38855004458](https://github.com
 `@refs/heads/d2-push-and-sign`, because the run came from that branch:
 
 ```text
-<paste the "Verify signature" step output here>
+Verification for ghcr.io/ibll/home-assistant-core@sha256:0cf057d5e89c7b3500dac6a8c61c4a734d68f128e9ad25c47c05a96c5a9b165a --
+The following checks were performed on each of these signatures:
+  - The cosign claims were validated
+  - Existence of the claims in the transparency log was verified offline
+  - The code-signing certificate was verified using trusted certificate authority certificates
+{}
 ```
+
+The three checks are what matter: the signature is valid, it is recorded in
+the public Sigstore transparency log, and the certificate chains to
+Sigstore's certificate authority. `cosign verify` only prints that header if
+the certificate's issuer and identity also match the flags, so the identity
+check passed too. The trailing `{}` is the step printing the signature's
+`optional` annotations, which the cosign version installed by
+`cosign-installer` v4 leaves empty.
 
 ### Evidence
 
