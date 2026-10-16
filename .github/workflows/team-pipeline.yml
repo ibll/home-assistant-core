@@ -9,6 +9,9 @@ on:
   push:
     branches:
       - main
+    # Version tags also publish a GitHub Release (issue D5).
+    tags:
+      - "v*"
   pull_request: ~
   workflow_dispatch:
     inputs:
@@ -115,7 +118,20 @@ jobs:
     uses: ./.github/workflows/team-deploy.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
-      packages: read # To pull the image from GHCR
+      packages: write # To pull the image and move the :staging tag in GHCR
     with:
       inject-failure: ${{ inputs.inject_failure || 'none' }}
+      image: ${{ needs.package.outputs.image }}
+
+  release:
+    name: Release
+    needs:
+      - package
+      - deploy
+    # Only version tags, and only after the image passed staging.
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/team-release.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
+    permissions:
+      contents: write # To create the GitHub Release and upload its assets
+    with:
       image: ${{ needs.package.outputs.image }}

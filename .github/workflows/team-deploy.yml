@@ -1,7 +1,9 @@
 name: Team pipeline / Deploy
 
 # Issue D4 starts the signed image in the gated `staging` environment and
-# smoke-tests it. Issue D5 adds rollback and releases.
+# smoke-tests it. Issue D5 promotes a passing image to `:staging` and keeps
+# the previous one live when the smoke test fails. Releases are in
+# team-release.yml.
 
 # yamllint disable-line rule:truthy
 on:
@@ -38,7 +40,9 @@ jobs:
     environment: staging
     permissions:
       contents: read # To check out the repository
-      packages: read # To pull the image from GHCR
+      packages: write # To pull the image and move the :staging tag in GHCR
+    outputs:
+      live: ${{ steps.live.outputs.digest }}
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +66,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record the digest currently on :staging
+        id: previous
+        env:
+          IMAGE: ${{ inputs.image }}
+        # This is the "last good" image to keep live if this deploy fails.
+        run: |
+          staging="${IMAGE%@*}:staging"
+          if digest="$(docker buildx imagetools inspect "${staging}" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest)" \
+              && [[ "${digest}" == sha256:* ]]; then
+            echo "Currently on :staging: ${digest}"
+          else
+            digest=""
+            echo "Nothing is on :staging yet; this is the first deploy."
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
       - name: Start Home Assistant
         env:
@@ -125,6 +145,45 @@ jobs:
           stage: smoke
           inject-failure: ${{ inputs.inject-failure }}
 
+      - name: Promote this image to :staging
+        id: promote
+        env:
+          IMAGE: ${{ inputs.image }}
+        # Only reached when the smoke test (and any injected failure) passed.
+        # Copies the tag to the digest in the registry, without re-pushing.
+        run: |
+          docker buildx imagetools create --tag "${IMAGE%@*}:staging" "${IMAGE}"
+          echo "::notice:::staging now points to ${IMAGE#*@}"
+
+      - name: Keep the previous image on :staging
+        if: failure()
+        env:
+          IMAGE: ${{ inputs.image }}
+          PREVIOUS: ${{ steps.previous.outputs.digest }}
+        # The tag only moves after a passing smoke test, so normally there is
+        # nothing to undo. If something else moved it during this run, put it
+        # back on the last good digest.
+        run: |
+          staging="${IMAGE%@*}:staging"
+          current="$(docker buildx imagetools inspect "${staging}" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest || true)"
+          if [[ -n "${PREVIOUS}" && "${current}" != "${PREVIOUS}" ]]; then
+            echo "Rolling :staging back from ${current:-nothing} to ${PREVIOUS}"
+            docker buildx imagetools create --tag "${staging}" "${IMAGE%@*}@${PREVIOUS}"
+          fi
+          echo "::error::Smoke test failed. :staging still points to ${PREVIOUS:-nothing (no image has passed yet)}"
+
+      - name: Report which digest is live
+        id: live
+        if: always()
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          staging="${IMAGE%@*}:staging"
+          digest="$(docker buildx imagetools inspect "${staging}" --format '{{json .Manifest}}' 2>/dev/null | jq -r .digest || true)"
+          echo "Live on :staging: ${digest:-nothing}"
+          docker buildx imagetools inspect "${staging}" 2>/dev/null | head -n 5 || true
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
       - name: Collect container logs
         if: always()
         run: |
@@ -152,6 +211,8 @@ jobs:
         env:
           IMAGE: ${{ inputs.image }}
           JOB_STATUS: ${{ job.status }}
+          PREVIOUS: ${{ steps.previous.outputs.digest }}
+          LIVE: ${{ steps.live.outputs.digest }}
         run: |
           {
             echo "### Deploy stage: staging"
@@ -160,5 +221,7 @@ jobs:
             echo "|---|---|"
             echo "| Image | \`${IMAGE:-none}\` |"
             echo "| Result | ${JOB_STATUS} |"
+            echo "| :staging before | \`${PREVIOUS:-nothing}\` |"
+            echo "| :staging now (live) | \`${LIVE:-nothing}\` |"
             echo "| Logs | artifact \`staging-logs-${GITHUB_SHA}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

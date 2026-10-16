@@ -279,3 +279,84 @@ called workflow can't have more than its caller.
 - Passing run, with the approval: <run link>
 - `inject_failure=smoke` run, failing in this job: <run link>
 - Logs artifact: `staging-logs-<sha>` on both runs
+
+## Rollback and release
+
+Issue D5 (#27). The rollback is in `team-deploy.yml` (job `staging`); the
+release is a new stage, `team-release.yml`.
+
+### What "live" means
+
+The staging container only exists while its job runs, so the image that is
+"live on staging" is whatever the `ghcr.io/ibll/home-assistant-core:staging`
+tag points to. Rollback means keeping that tag on the last image that passed.
+
+### Promote or keep the last good image
+
+1. Before starting the container, the job records the digest currently on
+   `:staging` (empty on the very first deploy).
+2. Only after the smoke test **and** the inject-failure step pass does it
+   move `:staging` to the new digest, with
+   `docker buildx imagetools create --tag …:staging <image>@<digest>`. This
+   copies the tag in the registry without pulling or re-pushing anything.
+3. If anything fails, `:staging` was never moved, so it's still on the
+   previous good digest. A `failure()` step checks that, moves it back if
+   another run moved it in the meantime, and prints which digest is live.
+4. A final step always prints the live digest, and the job summary shows
+   `:staging` before and after.
+
+`team-deploy.yml` now needs `packages: write` instead of `read`, to move the
+tag. The `deploy` job in `team-pipeline.yml` grants the same.
+
+### Showing the rollback
+
+Run the pipeline once normally, then once with `inject_failure=smoke`, and
+compare:
+
+```bash
+docker buildx imagetools inspect ghcr.io/ibll/home-assistant-core:staging
+```
+
+```text
+<paste: digest after the passing run>
+<paste: digest after the inject_failure=smoke run — must be the same>
+```
+
+### Release on a version tag
+
+`team-pipeline.yml` now also runs on pushes of tags matching `v*`. Its new
+`release` job runs only for those tags, only after the image passed staging,
+and is the only job with `contents: write`.
+
+`team-release.yml`:
+
+1. Downloads every artifact from the run.
+2. Collects the release assets:
+   - `image-digest.txt`: the full image reference with its digest (required).
+   - `sbom-image.spdx.json`: from the package stage (required).
+   - The wheel and sdist from the build stage's `dist-<sha>` artifact (A3).
+   - `sbom-wheel.spdx.json` from the security stage (C5).
+3. Writes `SHA256SUMS` over all of them.
+4. Creates the release with `gh release create --verify-tag`, with the image
+   reference and verification instructions at the top of the notes, followed
+   by GitHub's generated notes. Tags with a suffix (`v0.0.1-team`) are marked
+   as pre-releases.
+
+**Until A3 and C5 land**, the wheel and wheel SBOM don't exist. Instead of
+failing, the release lists them under "Not attached yet" and the job prints a
+warning, so the release flow can be tested now and becomes complete without
+changes once those stages produce their artifacts.
+
+The package stage also tags images built from a tag with the tag name, for
+example `:v0.0.1-team`.
+
+### Settings this needs (tech lead)
+
+- The `staging` environment must allow the `v*` tags, not only `main`;
+  otherwise the deploy job, and so the release, is blocked on tag pushes.
+
+### Evidence
+
+- Passing run, `:staging` moved: <run link>
+- `inject_failure=smoke` run, `:staging` unchanged: <run link>
+- Release for `v0.0.1-team`: <release link>

@@ -1,0 +1,110 @@
+name: Team pipeline / Release
+
+# Issue D5. On a v* tag, after the image passed staging, publishes a GitHub
+# Release with the wheel, SHA256SUMS, both SBOMs and the image digest.
+# Issue D6 adds AI-drafted release notes.
+
+# yamllint disable-line rule:truthy
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image reference with digest, from the package stage.
+        type: string
+        required: true
+
+permissions: {}
+
+# The stage suffix keeps this group distinct from the caller's group in
+# team-pipeline.yml; sharing it would make the stage cancel itself.
+concurrency:
+  group: ${{ github.workflow }}-release-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # To create the release and upload its assets
+    steps:
+      - name: Download this run's artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Assemble release assets
+        env:
+          IMAGE: ${{ inputs.image }}
+        # The image SBOM and digest come from this team's package stage and
+        # are required. The wheel (A3) and wheel SBOM (C5) are attached when
+        # those stages produce them; until then the release says they're
+        # missing instead of failing.
+        run: |
+          mkdir -p release
+          missing=()
+
+          if [[ ! "${IMAGE}" =~ ^ghcr\.io/.+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::No image digest from the package stage: '${IMAGE}'"
+            exit 1
+          fi
+          echo "${IMAGE}" > release/image-digest.txt
+
+          if [[ -f artifacts/sbom-image.spdx.json ]]; then
+            cp artifacts/sbom-image.spdx.json release/
+          else
+            echo "::error::sbom-image.spdx.json is missing (package stage, D3)"
+            exit 1
+          fi
+
+          shopt -s nullglob
+          wheels=(artifacts/*.whl)
+          sdists=(artifacts/*.tar.gz)
+          if (( ${#wheels[@]} )); then
+            cp "${wheels[@]}" "${sdists[@]}" release/
+          else
+            missing+=("wheel (dist-<sha> from the build stage, issue A3)")
+          fi
+          if [[ -f artifacts/sbom-wheel.spdx.json ]]; then
+            cp artifacts/sbom-wheel.spdx.json release/
+          else
+            missing+=("sbom-wheel.spdx.json (security stage, issue C5)")
+          fi
+
+          (cd release && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+
+          {
+            echo "Image: \`${IMAGE}\`"
+            echo ""
+            echo "Verify the files with \`sha256sum -c SHA256SUMS\`."
+            if (( ${#missing[@]} )); then
+              echo ""
+              echo "Not attached yet:"
+              printf -- '- %s\n' "${missing[@]}"
+            fi
+          } > release-notes-header.md
+          for m in "${missing[@]}"; do echo "::warning::Not attached: ${m}"; done
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=()
+          # Tags with a suffix, such as v0.0.1-team, are test releases.
+          if [[ "${TAG}" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "${TAG}" release/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "${TAG}" \
+            --notes-file release-notes-header.md \
+            --generate-notes \
+            "${prerelease[@]}"
+          {
+            echo "### Release ${TAG}"
+            echo ""
+            echo "Assets:"
+            for f in release/*; do echo "- \`${f#release/}\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -96,10 +96,11 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           # :<full commit sha> on every run, plus the branch name, which is
-          # :main on pushes to main.
+          # :main on pushes to main, or the tag name (:v1.2.3) on tag pushes.
           tags: |
             type=sha,prefix=,format=long
             type=ref,event=branch
+            type=ref,event=tag
 
       - name: Record build start time
         id: start
