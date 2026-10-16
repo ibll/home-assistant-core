@@ -1,0 +1,71 @@
+name: Team pipeline / Release notes review
+
+# Issue D6. When a human publishes a draft release, compare the published
+# notes with the AI draft and record how much was edited (checklist rubric).
+
+# yamllint disable-line rule:truthy
+on:
+  release:
+    types:
+      - published
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: Measure edits to the AI draft
+    if: github.repository == 'ibll/home-assistant-core'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # To download the draft notes attached to the release
+    steps:
+      - name: Download the draft notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if ! gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+              --pattern release-notes-draft.md --dir draft; then
+            echo "::notice::${TAG} has no release-notes-draft.md; it wasn't made by the pipeline."
+          fi
+
+      - name: Compute the edit ratio
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PUBLISHED: ${{ github.event.release.body }}
+        # difflib's ratio: 1.0 means published unchanged, lower means more
+        # edited. Standard library only, so the runner's python3 is enough.
+        run: |
+          [[ -f draft/release-notes-draft.md ]] || exit 0
+          python3 - <<'PY'
+          import difflib, json, os
+          draft = open("draft/release-notes-draft.md", encoding="utf-8").read().strip()
+          published = (os.environ.get("PUBLISHED") or "").replace("\r\n", "\n").strip()
+          ratio = difflib.SequenceMatcher(None, draft, published).ratio()
+          result = {
+              "tag": os.environ["TAG"],
+              "similarity_ratio": round(ratio, 4),
+              "edit_fraction": round(1 - ratio, 4),
+              "draft": draft,
+              "published": published,
+          }
+          with open("ai-release-notes-edit.json", "w", encoding="utf-8") as f:
+              json.dump(result, f, indent=2)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write(f"### Release notes review for {result['tag']}\n\n")
+              f.write(f"Similarity to the AI draft: **{ratio:.2%}** "
+                      f"(edited: {1 - ratio:.2%}).\n")
+          print(json.dumps({k: result[k] for k in ("tag", "similarity_ratio")}))
+          PY
+
+      - name: Upload the comparison
+        if: hashFiles('ai-release-notes-edit.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ai-release-notes-edit
+          path: ai-release-notes-edit.json

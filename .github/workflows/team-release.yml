@@ -2,7 +2,8 @@ name: Team pipeline / Release
 
 # Issue D5. On a v* tag, after the image passed staging, publishes a GitHub
 # Release with the wheel, SHA256SUMS, both SBOMs and the image digest.
-# Issue D6 adds AI-drafted release notes.
+# Issue D6 makes it a draft with AI-drafted notes, for a human to edit and
+# publish; team-release-notes-review.yml measures how much they changed.
 
 # yamllint disable-line rule:truthy
 on:
@@ -73,8 +74,6 @@ jobs:
             missing+=("sbom-wheel.spdx.json (security stage, issue C5)")
           fi
 
-          (cd release && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
-
           {
             echo "Image: \`${IMAGE}\`"
             echo ""
@@ -87,23 +86,42 @@ jobs:
           } > release-notes-header.md
           for m in "${missing[@]}"; do echo "::warning::Not attached: ${m}"; done
 
-      - name: Create the release
+      - name: Add the AI-drafted notes
+        # The notes were validated by the AI advisory job. If that job
+        # failed or produced nothing valid, fall back to GitHub's notes.
+        run: |
+          if [[ -s artifacts/ai-release-notes.md ]]; then
+            { echo ""; cat artifacts/ai-release-notes.md; } >> release-notes-header.md
+            echo "notes=ai" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No valid AI release notes; using GitHub's generated notes."
+            echo "notes=generated" >> "$GITHUB_ENV"
+          fi
+          # Keep the exact draft text, so the edit after review can be measured.
+          cp release-notes-header.md release/release-notes-draft.md
+          (cd release && sha256sum -- * > SHA256SUMS)
+
+      - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+        # A draft: a human reviews and edits the notes, then publishes it.
         run: |
-          prerelease=()
+          extra=()
           # Tags with a suffix, such as v0.0.1-team, are test releases.
-          if [[ "${TAG}" == *-* ]]; then prerelease=(--prerelease); fi
+          if [[ "${TAG}" == *-* ]]; then extra+=(--prerelease); fi
+          if [[ "${notes}" == "generated" ]]; then extra+=(--generate-notes); fi
           gh release create "${TAG}" release/* \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
+            --draft \
             --title "${TAG}" \
             --notes-file release-notes-header.md \
-            --generate-notes \
-            "${prerelease[@]}"
+            "${extra[@]}"
           {
-            echo "### Release ${TAG}"
+            echo "### Draft release ${TAG}"
+            echo ""
+            echo "Notes: ${notes}. Edit and publish it under Releases."
             echo ""
             echo "Assets:"
             for f in release/*; do echo "- \`${f#release/}\`"; done

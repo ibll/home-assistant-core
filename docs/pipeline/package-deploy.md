@@ -360,3 +360,70 @@ example `:v0.0.1-team`.
 - Passing run, `:staging` moved: <run link>
 - `inject_failure=smoke` run, `:staging` unchanged: <run link>
 - Release for `v0.0.1-team`: <release link>
+
+## AI release notes
+
+Issue D6 (#28). Advisory: the AI drafts, a human edits and publishes.
+
+### How it's split
+
+Our rules give AI jobs only `contents: read` and `models: read`, but creating
+a release needs `contents: write`. So the work is split, and the AI never
+runs in a job that can write:
+
+| Job | File | Permissions | Does |
+|---|---|---|---|
+| `release-notes` | `team-ai-advisory.yml` | `contents: read`, `models: read` | Collects commits, calls the model, validates the answer, uploads `ai-release-notes` |
+| `release` | `team-release.yml` | `contents: write` | Puts the validated notes into a **draft** release |
+| `measure` | `team-release-notes-review.yml` | `contents: read` | When a human publishes, measures how much they edited |
+
+### Drafting (`release-notes`, only on `v*` tags)
+
+1. Collects commit subjects since the previous `v*` tag (`git describe
+   --match 'v*'`). On the first release there is no previous tag and the fork
+   carries upstream's whole history, so it takes the last 100 commits.
+2. Treats them as **untrusted**: at most 200 subjects of 200 characters,
+   control characters removed, placed between `<commits>` tags that the
+   prompt and system prompt both say are data, not instructions.
+3. Calls `actions/ai-inference` (`openai/gpt-4o-mini`, `max-tokens: 800`)
+   for markdown grouped as Features / Fixes / CI / Docs. The step has
+   `continue-on-error`, so a model outage doesn't fail anything.
+4. **Validates** the answer before anything uses it: keeps only the four
+   allowed `##` headings and `- ` bullets directly under them; drops every
+   other line, bullets under any other heading, HTML tags, link targets and
+   `@` mentions; caps it at 60 lines. If no bullet survives, the result is
+   `invalid` and the notes are empty.
+5. Uploads `ai-release-notes.json` (`model`, `prompt_hash`, `tokens`,
+   `latency_ms`, raw `output`, `validated`, `status`, the tag range and
+   commit count) and `ai-release-notes.md`. `tokens` is `null` because
+   `ai-inference` doesn't report usage; B5 does the same.
+
+### Draft release (`release`)
+
+The release job now waits for `ai-advisory` too, but runs whatever its
+result is (`!cancelled()`), because the notes are optional. It creates the
+release with `--draft`:
+
+- Valid AI notes go under the image and verification header.
+- Otherwise it falls back to GitHub's `--generate-notes` and warns.
+- The exact draft text is attached as `release-notes-draft.md` (and covered
+  by `SHA256SUMS`), so the edit can be measured later.
+
+A human then edits the notes under **Releases** and publishes.
+
+### Measuring the edit (`measure`)
+
+`team-release-notes-review.yml` runs on `release: published`. It downloads
+`release-notes-draft.md` from the release, compares it with the published
+body using Python's `difflib.SequenceMatcher(...).ratio()`, writes the
+similarity (1.0 = published unchanged) to the job summary, and uploads
+`ai-release-notes-edit.json` with the ratio, the draft and the published text.
+It only uses the standard library, so it runs on the runner's `python3`
+without setting up the project's Python 3.14.
+
+### Evidence
+
+- Tag run with the AI job and draft release: <run link>
+- `ai-release-notes.json`: <artifact link>
+- Published release: <release link>
+- Edit measurement run, ratio <x.xx>: <run link>
