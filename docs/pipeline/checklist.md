@@ -11,7 +11,7 @@ The tech lead fills this in at the end of each week and for the final report.
 **Evidence** is a link to a workflow run, a file, an artifact, or an AI-log
 entry. "We did it" without a link scores 0.
 
-Q1–Q16 are the course questions, word for word. N1–N10 are extra checks the
+Q1–Q16 are the course questions, word for word. N1–N11 are extra checks the
 course questions do not cover.
 
 | # | Question | Owner | Evidence required | "2 = met" when | Score | Evidence link |
@@ -42,8 +42,9 @@ course questions do not cover.
 | N8 | Are flaky tests detected and reported instead of silently retried? | B | B4 output | Flaky list in the metrics |  |  |
 | N9 | Is every AI-generated change attributed and reviewed by a human before merge (OHF AI policy, `AI_POLICY.md`)? | Lead | PR history | Trailer present + an approving human review |  |  |
 | N10 | Is the pipeline documented well enough for a new member to add a stage? | All | `docs/pipeline/` | A peer adds a dummy stage using only the docs |  |  |
+| N11 | Do settings, docs and tool versions still match the pipeline (drift)? | Lead (L6) | `drift-report.md` | Weekly drift run green; an injected settings change fails it |  |  |
 
-**Total:** ___ / 52
+**Total:** ___ / 54
 
 ## Per-PR review checklist (tech lead)
 

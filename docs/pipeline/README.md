@@ -6,6 +6,7 @@ Home Assistant Core fork, and how we use AI while building and running it.
 - [PLAN.md](PLAN.md): the full plan, with findings about the existing pipeline and every issue.
 - [checklist.md](checklist.md): the evaluation checklist the tech lead scores us with.
 - [issues/](issues/): one file per issue, used to create the GitHub issues.
+- [adr/](adr/README.md): decision records: what went wrong, the options we weighed and what we chose.
 - [ai-log/](ai-log/): one entry per issue on how AI was used. Start from [ai-log/TEMPLATE.md](ai-log/TEMPLATE.md).
 - [video/index.html](video/index.html): the animated 1:55 tutorial for Ticket 2, with its script. Open it in a browser and screen-record it.
 
@@ -57,7 +58,11 @@ merges or deploys.
    Do not use `actions/setup-python` with 3.12 or 3.13. That is why our first
    attempt failed: the project requires Python `>=3.14.2`.
 3. **Pin every action to a full commit SHA** with a version comment. Reuse a
-   pin from the table below whenever the action is listed there.
+   pin from the table below whenever the action is listed there. Local
+   actions and stage workflows keep the `./` form and carry
+   `# zizmor: ignore[self-repository] actionlint lacks $/ support`. zizmor
+   1.30.1 rejects `./`, and actionlint can't parse the `$/` form zizmor
+   suggests.
 4. **Least privilege.** Keep the top-level `permissions: {}`. Grant
    permissions per job, with a comment on each line saying why
    (`contents: read # To check out the repository`). Always check out with
@@ -122,6 +127,10 @@ gh run watch
 
 The chosen stage must fail, every stage after it must be skipped, and nothing
 may be deployed. Options are `none`, `lint`, `test`, `security` and `smoke`.
+Run them one at a time: a new manual run on a branch cancels the previous
+manual run there. Push and pull-request runs are in separate groups.
+Every run so far, with its verdict, is in
+[failure-injection.md](failure-injection.md).
 
 ## Checking your workflow locally
 
@@ -132,4 +141,7 @@ actionlint .github/workflows/team-*.yml
 
 `prek` needs the dev environment from `script/setup`. If you don't have it,
 `pip install yamllint zizmor actionlint-py` works too. Run zizmor with
-`--pedantic`, as upstream does.
+`--pedantic`, as upstream does, and **use the zizmor version pinned in
+`.pre-commit-config.yaml`** (1.30.1 at the time of writing). An older zizmor
+passed L0 while the pinned one reported 10 findings. Results from a different
+tool version are not evidence.
