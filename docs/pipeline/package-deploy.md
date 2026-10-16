@@ -34,21 +34,31 @@ The Dockerfile in use is set once, in the workflow's `env.DOCKERFILE`.
 
 ### Spike results
 
-| Run | Dockerfile | Cache | Outcome | Build time | Image size | Free disk after |
+| Run | Dockerfile | Cache | Outcome | Build time | Image size (uncompressed) | Free disk after |
 |---|---|---|---|---|---|---|
-| <run link> | `Dockerfile` | cold | <success / failure> | <m s> | <size> | <GB> |
-| <run link> | `Dockerfile` | warm | <success / failure> | <m s> | <size> | <GB> |
+| [#29](<link to run #29>) | `Dockerfile` | cold | success | 4m 19s (259 s) | 2.1 GB (2,190,163,159 bytes) | 100 GB |
+| [#39](<link to run #39>) | `Dockerfile` | <cache % from the run> | success | <from run #39> | <from run #39> | <from run #39> |
 
-Free disk before the build, from the "Free disk space" step log:
-<before cleanup> → <after cleanup>.
+Both runs used base image `ghcr.io/home-assistant/amd64-homeassistant-base:2026.07.0`.
+In run #39 the whole package job took 3m 19s.
 
-Failures seen: <none, or the error and the step it came from>.
+Failures seen: none in the build. BuildKit prints one warning,
+`InvalidDefaultArgInFrom` for `Dockerfile` line 6: `ARG BUILD_FROM` has no
+default value. It comes from upstream's `Dockerfile` (which our rules don't let
+us edit) and is harmless, because this workflow always passes `BUILD_FROM`.
 
 ### Decision
 
-<Full image or `Dockerfile.ci`, and why, citing the numbers above. The rule
-from the issue: use `Dockerfile.ci` if the full build fails or takes more
-than 40 minutes.>
+**Use the full upstream `Dockerfile`; no `Dockerfile.ci`.** The issue's rule
+was to write `Dockerfile.ci` only if the full build failed or took more than
+40 minutes. It succeeded in 4m 19s from a cold cache, about a tenth of that
+limit, and the 2.1 GB image left 100 GB of disk free on the runner. Keeping
+the full image also means staging runs exactly what upstream ships, with every
+integration's requirements, which `Dockerfile.ci` would have dropped.
+
+With 100 GB free, the disk cleanup step turned out not to be needed on
+today's runners. It stays as a cheap safeguard, since the image grows with
+every integration added upstream.
 
 ### Known gaps
 
