@@ -105,6 +105,8 @@ jobs:
     uses: ./.github/workflows/team-package.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
+      packages: write # To push the image to GHCR
+      id-token: write # To get the OIDC token cosign uses for keyless signing
 
   deploy:
     name: Deploy

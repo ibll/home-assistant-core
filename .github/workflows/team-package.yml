@@ -1,8 +1,7 @@
 name: Team pipeline / Package
 
-# Issue D1 (Docker build spike) builds the image here without pushing it.
-# D2 (push and sign) and D3 (image scan) extend this job. D2 adds
-# `packages: write` and `id-token: write` to this job only.
+# Issue D1 builds the image, D2 pushes it to GHCR and signs it, and D3
+# (image scan) extends this job.
 
 # yamllint disable-line rule:truthy
 on:
@@ -30,19 +29,24 @@ env:
   # other upstream workflows (commit d6a5ca687a3). When syncing from upstream,
   # copy BASE_IMAGE_VERSION from upstream's .github/workflows/builder.yml.
   BASE_IMAGE_VERSION: "2026.07.0"
-  # Local tag only; D2 replaces it with the GHCR name.
-  IMAGE_TAG: team-homeassistant:ci
+  # GHCR names must be lowercase; this repository's name already is.
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+  # Keyless signatures are issued by GitHub's OIDC provider to this reusable
+  # workflow, so verification pins both. See "Registry and signing".
+  COSIGN_ISSUER: https://token.actions.githubusercontent.com
+  COSIGN_IDENTITY_REGEXP: ^https://github\.com/${{ github.repository }}/\.github/workflows/team-package\.yml@refs/
 
 jobs:
   image:
-    name: Build container image
+    name: Build, push and sign container image
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read # To check out the repository
+      packages: write # To push the image to GHCR
+      id-token: write # To get the OIDC token cosign uses for keyless signing
     outputs:
-      # Empty until D2 pushes the image and can report its digest.
-      image: ""
+      image: ${{ steps.ref.outputs.image }}
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,11 +75,29 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # :<full commit sha> on every run, plus the branch name, which is
+          # :main on pushes to main.
+          tags: |
+            type=sha,prefix=,format=long
+            type=ref,event=branch
+
       - name: Record build start time
         id: start
         run: echo "epoch=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Build image (not pushed)
+      - name: Build and push image
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -84,12 +106,45 @@ jobs:
           platforms: linux/amd64
           build-args: |
             BUILD_FROM=${{ steps.base.outputs.build-from }}
-          push: false
-          # Load into the runner's Docker so the next step can measure it.
-          load: true
-          tags: ${{ env.IMAGE_TAG }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=team-package-amd64
           cache-to: type=gha,mode=max,scope=team-package-amd64
+
+      - name: Output image reference by digest
+        id: ref
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        # Tags can be moved; the digest names exactly the image we built,
+        # so signing, scanning and deploying all use it.
+        run: |
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::build-push-action returned no valid digest: '${DIGEST}'"
+            exit 1
+          fi
+          echo "image=${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image by digest (keyless)
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: cosign sign --yes "${IMAGE}"
+
+      - name: Verify signature
+        id: verify
+        # Proves the signature exists and was made by this workflow in this
+        # repository, not just by anyone with a GitHub token.
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          set -o pipefail
+          cosign verify \
+            --certificate-oidc-issuer "${COSIGN_ISSUER}" \
+            --certificate-identity-regexp "${COSIGN_IDENTITY_REGEXP}" \
+            "${IMAGE}" | jq '.[0].optional'
 
       - name: Record build time, image size and outcome
         if: always() && steps.start.outcome == 'success'
@@ -97,23 +152,34 @@ jobs:
           START_EPOCH: ${{ steps.start.outputs.epoch }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           BUILD_FROM: ${{ steps.base.outputs.build-from }}
+          IMAGE: ${{ steps.ref.outputs.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           duration=$(( $(date +%s) - START_EPOCH ))
           size="n/a"
-          if [[ "${BUILD_OUTCOME}" == "success" ]]; then
-            size_bytes="$(docker image inspect "${IMAGE_TAG}" --format '{{.Size}}')"
+          if [[ -n "${IMAGE}" ]]; then
+            # Sum the compressed layer sizes of the amd64 manifest in GHCR.
+            manifest="$(docker buildx imagetools inspect --raw "${IMAGE}")"
+            amd64="$(jq -r '.manifests[]? | select(.platform.architecture == "amd64") | .digest' <<< "${manifest}" | head -1)"
+            if [[ -n "${amd64}" ]]; then
+              manifest="$(docker buildx imagetools inspect --raw "${IMAGE_NAME}@${amd64}")"
+            fi
+            size_bytes="$(jq '[.layers[].size] | add' <<< "${manifest}")"
             size="$(numfmt --to=iec --suffix=B "${size_bytes}") (${size_bytes} bytes)"
           fi
           {
-            echo "### Package stage: image build (D1)"
+            echo "### Package stage: image build"
             echo ""
             echo "| Measure | Value |"
             echo "|---|---|"
             echo "| Dockerfile | \`${DOCKERFILE}\` |"
             echo "| Base image | \`${BUILD_FROM}\` |"
             echo "| Build outcome | ${BUILD_OUTCOME} |"
-            echo "| Build time | $(( duration / 60 ))m $(( duration % 60 ))s (${duration}s) |"
-            echo "| Image size (uncompressed) | ${size} |"
+            echo "| Build and push time | $(( duration / 60 ))m $(( duration % 60 ))s (${duration}s) |"
+            echo "| Image size (compressed, in GHCR) | ${size} |"
             echo "| Free disk after build | $(df -h / --output=avail | tail -1 | tr -d ' ') |"
+            echo "| Image | \`${IMAGE:-not pushed}\` |"
+            echo "| Tags | $(tr '\n' ' ' <<< "${TAGS}") |"
+            echo "| Signature verified | ${VERIFY_OUTCOME:-skipped} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Build ${BUILD_OUTCOME} in ${duration}s, image size ${size}"
