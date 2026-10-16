@@ -1,8 +1,7 @@
 name: Team pipeline / Deploy
 
-# Stub from issue L0. Issues D4 (staging deploy and smoke test) and D5
-# (rollback and release) fill this stage in. The `staging` environment
-# requires the tech lead's approval once issue L1 is done.
+# Issue D4 starts the signed image in the gated `staging` environment and
+# smoke-tests it. Issue D5 adds rollback and releases.
 
 # yamllint disable-line rule:truthy
 on:
@@ -25,6 +24,12 @@ concurrency:
   group: ${{ github.workflow }}-deploy-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  CONTAINER: ha-staging
+  BASE_URL: http://localhost:8123
+  # Home Assistant's first start creates its config and loads the frontend.
+  HEALTHY_TIMEOUT_SECONDS: 180
+
 jobs:
   staging:
     name: Deploy to staging and smoke test
@@ -33,21 +38,127 @@ jobs:
     environment: staging
     permissions:
       contents: read # To check out the repository
+      packages: read # To pull the image from GHCR
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Check the image reference
+        env:
+          IMAGE: ${{ inputs.image }}
+        # Only deploy exactly what the package stage built and signed.
+        run: |
+          if [[ ! "${IMAGE}" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Expected a GHCR image pinned by digest, got '${IMAGE}'"
+            exit 1
+          fi
+          echo "Deploying ${IMAGE}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start Home Assistant
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          docker pull --quiet "${IMAGE}"
+          # A fresh container with an empty /config, like a first install.
+          docker run -d --name "${CONTAINER}" -p 8123:8123 "${IMAGE}"
+
+      - name: Wait until healthy
+        run: |
+          deadline=$(( SECONDS + HEALTHY_TIMEOUT_SECONDS ))
+          until curl -fsS -o /dev/null "${BASE_URL}/manifest.json"; do
+            if [[ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER}")" != "true" ]]; then
+              echo "::error::The container exited before becoming healthy"
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::Not healthy after ${HEALTHY_TIMEOUT_SECONDS}s"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Healthy after ${SECONDS}s"
+
+      - name: Smoke test
+        run: |
+          fail=0
+
+          # 1. The frontend's web app manifest.
+          read -r code type < <(curl -sS -o manifest.json \
+            -w '%{http_code} %{content_type}\n' "${BASE_URL}/manifest.json")
+          echo "GET /manifest.json -> ${code} ${type}"
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::/manifest.json returned ${code}"; fail=1
+          fi
+          if [[ "${type}" != application/manifest+json* ]]; then
+            echo "::error::/manifest.json has content type '${type}'"; fail=1
+          fi
+          if ! jq -e '.name' manifest.json > /dev/null; then
+            echo "::error::/manifest.json is not JSON with a name"; fail=1
+          fi
+
+          # 2. Onboarding is open on a fresh instance, without logging in.
+          code=$(curl -sS -o onboarding.json -w '%{http_code}' "${BASE_URL}/api/onboarding")
+          echo "GET /api/onboarding -> ${code}: $(head -c 300 onboarding.json)"
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::/api/onboarding returned ${code}"; fail=1
+          fi
+          if ! jq -e 'type == "array"' onboarding.json > /dev/null; then
+            echo "::error::/api/onboarding did not return a JSON list"; fail=1
+          fi
+
+          exit "${fail}"
+
       - name: Inject failure
+        # After the real smoke test, so an injected failure looks exactly
+        # like a failed smoke test to everything after it (D5's rollback).
         uses: ./.github/actions/team-inject-failure # zizmor: ignore[self-repository] actionlint lacks $/ support
         with:
           stage: smoke
           inject-failure: ${{ inputs.inject-failure }}
-      - name: Stub (replaced by issues D4-D5)
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          if docker inspect "${CONTAINER}" > /dev/null 2>&1; then
+            docker logs "${CONTAINER}" > staging.log 2>&1
+            echo "Last 50 lines:"
+            tail -n 50 staging.log
+          else
+            echo "The container was never started." > staging.log
+          fi
+
+      - name: Upload container logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-logs-${{ github.sha }}
+          path: |
+            staging.log
+            manifest.json
+            onboarding.json
+          if-no-files-found: warn
+
+      - name: Summary
+        if: always()
         env:
           IMAGE: ${{ inputs.image }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "### Deploy stage (stub)"
-            echo "Image: ${IMAGE:-none yet}"
+            echo "### Deploy stage: staging"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE:-none}\` |"
+            echo "| Result | ${JOB_STATUS} |"
+            echo "| Logs | artifact \`staging-logs-${GITHUB_SHA}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

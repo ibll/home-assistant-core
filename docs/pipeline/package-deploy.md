@@ -230,3 +230,52 @@ both SBOMs use SPDX JSON so they can be compared.
 | <run link> | 2026.10.0 | <n> | pass | 2 |
 
 Security tab: <link to the code scanning results filtered by tool Trivy>
+
+## Staging deploy
+
+Issue D4 (#26). Workflow: `.github/workflows/team-deploy.yml`, job `staging`.
+Home Assistant is self-hosted, so "deploying" means starting the signed image
+in the gated `staging` environment and proving it serves requests.
+
+### What it does
+
+1. **Waits for approval.** The job uses `environment: staging`, so it doesn't
+   start until the tech lead approves it. The environment also only allows
+   deployments from `main`; a run from a feature branch fails here with
+   "Branch … is not allowed to deploy to staging due to environment
+   protection rules", before any step runs.
+2. **Checks the image reference** from the package stage is a GHCR image
+   pinned by digest, so it deploys exactly what was built, scanned and signed.
+3. **Logs in to GHCR** with `packages: read` and pulls the image.
+4. **Starts a fresh container** (`docker run -d -p 8123:8123`) with an empty
+   `/config`, like a first install.
+5. **Waits until healthy:** polls `GET /manifest.json` every 5 seconds for up
+   to 3 minutes, and fails early if the container exits.
+6. **Smoke test:**
+   - `GET /manifest.json` returns 200, content type
+     `application/manifest+json`, and JSON with a `name`. This proves the
+     frontend is installed and being served.
+   - `GET /api/onboarding` returns 200 and a JSON list. On a fresh instance
+     this endpoint works without logging in, so it proves the core and its
+     HTTP API are up.
+7. **Failure injection** (`stage: smoke`) runs *after* the real smoke test,
+   so `inject_failure=smoke` looks exactly like a failed smoke test to D5's
+   rollback.
+8. **Always** saves `docker logs` and both responses, and uploads them as
+   `staging-logs-<sha>`, even when an earlier step fails.
+
+### Permissions
+
+| Permission | Why |
+|---|---|
+| `contents: read` | Check out the repository (for the inject-failure action) |
+| `packages: read` | Pull the image from GHCR |
+
+`team-pipeline.yml`'s `deploy` job grants `packages: read` too, since a
+called workflow can't have more than its caller.
+
+### Evidence
+
+- Passing run, with the approval: <run link>
+- `inject_failure=smoke` run, failing in this job: <run link>
+- Logs artifact: `staging-logs-<sha>` on both runs

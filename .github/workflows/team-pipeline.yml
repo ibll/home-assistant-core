@@ -115,6 +115,7 @@ jobs:
     uses: ./.github/workflows/team-deploy.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
+      packages: read # To pull the image from GHCR
     with:
       inject-failure: ${{ inputs.inject_failure || 'none' }}
       image: ${{ needs.package.outputs.image }}
