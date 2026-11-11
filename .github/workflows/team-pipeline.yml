@@ -25,10 +25,8 @@ on:
 
 permissions: {}
 
-# The event name keeps a manual run (such as an inject_failure run) from
-# cancelling a push run on the same branch.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -70,7 +68,7 @@ jobs:
     uses: ./.github/workflows/team-security.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
-      security-events: write # To upload Gitleaks results to code scanning
+      security-events: write # To upload Gitleaks results in the reusable workflow
     with:
       inject-failure: ${{ inputs.inject_failure || 'none' }}
       requirements-changed: ${{ needs.changes.outputs.requirements-changed }}
@@ -105,8 +103,6 @@ jobs:
     uses: ./.github/workflows/team-package.yml # zizmor: ignore[self-repository] actionlint lacks $/ support
     permissions:
       contents: read # To check out the repository
-      packages: write # To push the image to GHCR
-      id-token: write # To get the OIDC token cosign uses for keyless signing
 
   deploy:
     name: Deploy

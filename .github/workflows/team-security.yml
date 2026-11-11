@@ -1,7 +1,7 @@
 name: Team pipeline / Security
 
-# Issues C2 (dependency vulnerabilities), C3 (new-dependency tracker), C4
-# (workflow hardening) and C5 (SBOM) extend this stage.
+# Issues C1 (secrets), C3 (new-dependency tracker), C4 (workflow hardening)
+# and C5 (SBOM) add more checks to this stage.
 
 # yamllint disable-line rule:truthy
 on:
@@ -21,7 +21,7 @@ permissions: {}
 # The stage suffix keeps this group distinct from the caller's group in
 # team-pipeline.yml; sharing it would make the stage cancel itself.
 concurrency:
-  group: ${{ github.workflow }}-security-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-security-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,76 +31,80 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read # To check out the repository
-      security-events: write # To upload Gitleaks results to code scanning
+      security-events: write # To upload the Gitleaks SARIF report
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
+          fetch-depth: 0
       - name: Inject failure
         uses: ./.github/actions/team-inject-failure # zizmor: ignore[self-repository] actionlint lacks $/ support
         with:
           stage: security
           inject-failure: ${{ inputs.inject-failure }}
-      - name: Scan commits with Gitleaks
-        id: gitleaks
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-          PUSH_AFTER: ${{ github.sha }}
+      - name: Get uv version
+        id: uv-version
+        run: echo "version=$(grep '^uv==' requirements.txt | cut -d'=' -f3)" >> "$GITHUB_OUTPUT"
+      - name: Set up uv and Python
+        uses: ./.github/actions/setup-uv-python # zizmor: ignore[self-repository] actionlint lacks $/ support
+        with:
+          python-version: "3.14"
+          uv-version: ${{ steps.uv-version.outputs.version }}
+      - name: Install Gitleaks
         run: |
-          set -euo pipefail
-          gitleaks_version="8.30.1"
-          gitleaks_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
-          archive="$RUNNER_TEMP/gitleaks.tar.gz"
           curl --fail --location --silent --show-error \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${gitleaks_version}/gitleaks_${gitleaks_version}_linux_x64.tar.gz" \
-            --output "$archive"
-          echo "${gitleaks_sha256}  ${archive}" | sha256sum --check --status
-          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP" gitleaks
-
-          if [[ -n "$PR_BASE_SHA" ]]; then
-            commit_range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
-          elif [[ -n "$PUSH_BEFORE" && "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
-            commit_range="${PUSH_BEFORE}..${PUSH_AFTER}"
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz \
+            | tar -xz gitleaks
+      - name: Scan commits for secrets
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then
+            range="$PR_BASE_SHA..$HEAD_SHA"
+          elif [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            range="$PUSH_BEFORE_SHA..$HEAD_SHA"
           else
-            # Manual runs have no base commit. Scan only what the commit being
-            # built added: the full upstream history has 1,240 findings, mostly
-            # fake tokens in test fixtures.
-            commit_range="${PUSH_AFTER}~1..${PUSH_AFTER}"
+            range="$HEAD_SHA^..$HEAD_SHA"
           fi
-
-          set +e
-          "$RUNNER_TEMP/gitleaks" git \
-            --log-opts="$commit_range" \
-            --redact \
-            --report-format=sarif \
-            --report-path=gitleaks.sarif
-          scan_status=$?
-          set -e
-          if [[ ! -f gitleaks.sarif ]]; then
-            printf '{"$schema":"https://json.schemastore.org/sarif-2.1.0.json","version":"2.1.0","runs":[{"tool":{"driver":{"name":"Gitleaks","version":"%s"}},"results":[]}]}' \
-              "$gitleaks_version" > gitleaks.sarif
-          fi
-          echo "exit_code=${scan_status}" >> "$GITHUB_OUTPUT"
-      - name: Upload Gitleaks results to code scanning
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+          ./gitleaks detect --source . --log-opts="$range" --report-format sarif --report-path gitleaks.sarif --exit-code 1
+      - name: Upload Gitleaks results to Code Scanning
+        if: always() && hashFiles('gitleaks.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
-      - name: Upload Gitleaks SARIF artifact
+      - name: Upload Gitleaks report artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: gitleaks.sarif
+          name: gitleaks
           path: gitleaks.sarif
-          if-no-files-found: error
-      - name: Fail when Gitleaks finds secrets
-        if: steps.gitleaks.outputs.exit_code != '0'
+          if-no-files-found: warn
+      - name: Audit core requirements
+        run: uvx --from pip-audit pip-audit -r requirements.txt --format json > pip-audit.json
+      - name: Review dependency changes
+        if: inputs.requirements-changed == 'true' && github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pip-audit
+          path: pip-audit.json
+          if-no-files-found: warn
+      - name: Summarize security scans
         env:
-          SCAN_EXIT_CODE: ${{ steps.gitleaks.outputs.exit_code }}
+          REQUIREMENTS_CHANGED: ${{ inputs.requirements-changed }}
         run: |
-          echo "::error::Gitleaks found secrets (exit ${SCAN_EXIT_CODE})"
-          exit 1
+          {
+            echo "### Security scans"
+            echo "Requirements changed: ${REQUIREMENTS_CHANGED}"
+            echo "The core requirements audit report is available as the pip-audit artifact."
+            echo "The Gitleaks SARIF report is available in Code Scanning and as the gitleaks artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
