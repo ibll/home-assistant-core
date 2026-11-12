@@ -105,6 +105,10 @@
         }
       },
       "name": "PTZ preset"
+    },
+    "stop_ptz": {
+      "description": "Stops PTZ movement on a Foscam camera.",
+      "name": "Stop PTZ"
     }
   }
 }
