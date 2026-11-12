@@ -12,7 +12,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, entity_platform
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import CONF_RTSP_PORT, CONF_STREAM, LOGGER, SERVICE_PTZ, SERVICE_PTZ_PRESET
+from .const import (
+    CONF_RTSP_PORT,
+    CONF_STREAM,
+    LOGGER,
+    SERVICE_PTZ,
+    SERVICE_PTZ_PRESET,
+    SERVICE_STOP_PTZ,
+)
 from .coordinator import FoscamConfigEntry, FoscamCoordinator
 from .entity import FoscamEntity
 
@@ -81,6 +88,12 @@ async def async_setup_entry(
             probatio.Required(ATTR_PRESET_NAME): cv.string,
         },
         "async_perform_ptz_preset",
+    )
+
+    platform.async_register_entity_service(
+        SERVICE_STOP_PTZ,
+        None,
+        "async_stop_ptz",
     )
 
     coordinator = config_entry.runtime_data
@@ -252,3 +265,12 @@ class HassFoscamCamera(FoscamEntity, Camera):
                 "Error moving to preset %s on '%s': %s", preset_name, self.name, ret
             )
             return
+
+    async def async_stop_ptz(self) -> None:
+        """Stop PTZ movement on the camera."""
+        ret, _ = await self.hass.async_add_executor_job(
+            self._foscam_session.ptz_stop_run
+        )
+
+        if ret != 0:
+            LOGGER.error("Error stopping movement on '%s': %s", self.name, ret)

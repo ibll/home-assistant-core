@@ -37,3 +37,9 @@ ptz_preset:
       example: "TopMost"
       selector:
         text:
+
+stop_ptz:
+  target:
+    entity:
+      integration: foscam
+      domain: camera

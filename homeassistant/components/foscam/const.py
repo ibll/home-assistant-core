@@ -11,6 +11,7 @@ CONF_STREAM = "stream"
 
 SERVICE_PTZ = "ptz"
 SERVICE_PTZ_PRESET = "ptz_preset"
+SERVICE_STOP_PTZ = "stop_ptz"
 
 SUPPORTED_SWITCHES = [
     "flip_switch",
