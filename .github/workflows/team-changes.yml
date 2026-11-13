@@ -1,11 +1,9 @@
 name: Team pipeline / Changes
 
-# Stub from issue L0. Issue A1 replaces the stub step with real change
-# detection; keep the output names so the orchestrator does not change.
-
 # yamllint disable-line rule:truthy
 on:
   workflow_call:
+    # These values are consumed by the later team pipeline stages.
     outputs:
       integrations:
         description: JSON list of the integration domains that changed.
@@ -33,20 +31,96 @@ jobs:
     name: Detect changed files
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    # The checkout only needs repository contents to compare commits.
     permissions:
       contents: read # To check out the repository
     outputs:
-      integrations: ${{ steps.stub.outputs.integrations }}
-      core-changed: ${{ steps.stub.outputs.core-changed }}
-      requirements-changed: ${{ steps.stub.outputs.requirements-changed }}
-      workflows-changed: ${{ steps.stub.outputs.workflows-changed }}
+      integrations: ${{ steps.detect.outputs.integrations }}
+      core-changed: ${{ steps.detect.outputs.core-changed }}
+      requirements-changed: ${{ steps.detect.outputs.requirements-changed }}
+      workflows-changed: ${{ steps.detect.outputs.workflows-changed }}
     steps:
-      - name: Stub outputs (replaced by issue A1)
-        id: stub
+      - name: Check out code from GitHub
+        # Full history is required because the comparison base may be any commit.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect changed files
+        id: detect
+        # Keep event expressions out of the shell script and select the correct base.
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+
+          # Compare the selected base commit with the event's checked-out commit.
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          # Extract integration domains from both source and integration test paths.
+          integrations=$(
+            printf '%s\n' "${changed_files[@]}" |
+              sed -n -E \
+                -e 's#^homeassistant/components/([^/]+)/.*#\1#p' \
+                -e 's#^tests/components/([^/]+)/.*#\1#p' |
+              sort -u |
+              jq -Rsc 'split("\n") | map(select(length > 0))'
+          )
+          core_changed=false
+          requirements_changed=false
+          workflows_changed=false
+
+          # Set each boolean when a changed path matches its category.
+          for file in "${changed_files[@]}"; do
+            if [[ "$file" == homeassistant/* && "$file" != homeassistant/components/* ]]; then
+              core_changed=true
+            fi
+            if [[ "$file" == */requirements*.txt || "$file" == requirements*.txt ||
+              "$file" == */pyproject.toml || "$file" == pyproject.toml ||
+              "$file" == */manifest.json || "$file" == manifest.json ]]; then
+              requirements_changed=true
+            fi
+            if [[ "$file" == .github/* ]]; then
+              workflows_changed=true
+            fi
+          done
+
+          # Publish reusable-workflow outputs for downstream jobs.
           {
-            echo 'integrations=[]'
-            echo 'core-changed=false'
-            echo 'requirements-changed=false'
-            echo 'workflows-changed=false'
+            echo "integrations=$integrations"
+            echo "core-changed=$core_changed"
+            echo "requirements-changed=$requirements_changed"
+            echo "workflows-changed=$workflows_changed"
           } >> "$GITHUB_OUTPUT"
+
+          # Preserve the complete result as one machine-readable artifact.
+          jq -n \
+            --argjson integrations "$integrations" \
+            --arg core_changed "$core_changed" \
+            --arg requirements_changed "$requirements_changed" \
+            --arg workflows_changed "$workflows_changed" \
+            '{
+              integrations: $integrations,
+              "core-changed": ($core_changed == "true"),
+              "requirements-changed": ($requirements_changed == "true"),
+              "workflows-changed": ($workflows_changed == "true")
+            }' > changes.json
+
+          # Make the classifications visible in the Actions run summary.
+          {
+            echo "### Change detection"
+            echo "| Output | Value |"
+            echo "|---|---|"
+            echo "| integrations | \`$integrations\` |"
+            echo "| core-changed | \`$core_changed\` |"
+            echo "| requirements-changed | \`$requirements_changed\` |"
+            echo "| workflows-changed | \`$workflows_changed\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload change detection artifact
+        # Keep all classifications together for later inspection or download.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: changes.json
+          path: changes.json
+          if-no-files-found: error
