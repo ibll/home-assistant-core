@@ -48,6 +48,10 @@ course questions do not cover.
 
 ## Per-PR review checklist (tech lead)
 
+The team's checklist for AI-generated code is
+[ai-code-review-checklist.md](ai-code-review-checklist.md), with a
+[detailed version](ai-code-review-checklist-detailed.md).
+
 Use this on every team PR before approving it.
 
 - [ ] Only `team-*` workflows, `docs/pipeline/` and files the issue names were changed. No upstream workflow was edited.
