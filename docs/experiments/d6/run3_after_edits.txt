@@ -1,0 +1,17 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python3
+rootdir: /home/claude/d6
+plugins: platformdirs-4.13.5, anyio-4.15.1
+collecting ... collected 9 items
+
+tests/scripts/test_team_release_notes.py::test_only_prs_merged_between_tags_are_selected PASSED [ 11%]
+tests/scripts/test_team_release_notes.py::test_tag_boundaries_exclude_previous_and_include_new_tag PASSED [ 22%]
+tests/scripts/test_team_release_notes.py::test_prs_are_grouped_into_sections_by_label PASSED [ 33%]
+tests/scripts/test_team_release_notes.py::test_notes_start_with_advisory_banner PASSED [ 44%]
+tests/scripts/test_team_release_notes.py::test_ai_prompt_contains_every_selected_pr PASSED [ 55%]
+tests/scripts/test_team_release_notes.py::test_release_is_created_as_draft PASSED [ 66%]
+tests/scripts/test_team_release_notes.py::test_falls_back_to_pr_list_when_ai_fails PASSED [ 77%]
+tests/scripts/test_team_release_notes.py::test_falls_back_when_ai_times_out PASSED [ 88%]
+tests/scripts/test_team_release_notes.py::test_no_changes_skips_ai_call PASSED [100%]
+
+============================== 9 passed in 0.03s ===============================

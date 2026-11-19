@@ -1,0 +1,124 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.18, pytest-9.1.1, pluggy-1.6.0 -- /usr/local/bin/python3
+rootdir: /home/claude/d6
+plugins: platformdirs-4.13.5, anyio-4.15.1
+collecting ... collected 9 items
+
+tests/scripts/test_team_release_notes.py::test_only_prs_merged_between_tags_are_selected PASSED [ 11%]
+tests/scripts/test_team_release_notes.py::test_prs_are_grouped_into_sections_by_label PASSED [ 22%]
+tests/scripts/test_team_release_notes.py::test_notes_start_with_advisory_banner PASSED [ 33%]
+tests/scripts/test_team_release_notes.py::test_ai_prompt_contains_every_selected_pr PASSED [ 44%]
+tests/scripts/test_team_release_notes.py::test_release_is_created_as_draft FAILED [ 55%]
+tests/scripts/test_team_release_notes.py::test_release_is_never_published PASSED [ 66%]
+tests/scripts/test_team_release_notes.py::test_falls_back_to_pr_list_when_ai_fails FAILED [ 77%]
+tests/scripts/test_team_release_notes.py::test_falls_back_when_ai_times_out FAILED [ 88%]
+tests/scripts/test_team_release_notes.py::test_no_changes_skips_ai_call PASSED [100%]
+
+=================================== FAILURES ===================================
+_______________________ test_release_is_created_as_draft _______________________
+
+    def test_release_is_created_as_draft() -> None:
+        github = MagicMock()
+    
+        create_draft_release(github, "v1.1.0", "notes body")
+    
+>       github.create_release.assert_called_once_with(tag="v1.1.0", body="notes body", draft=True)
+
+tests/scripts/test_team_release_notes.py:86: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/usr/local/lib/python3.13/unittest/mock.py:991: in assert_called_once_with
+    return self.assert_called_with(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <MagicMock name='mock.create_release' id='140656296511200'>, args = ()
+kwargs = {'tag': 'v1.1.0', 'body': 'notes body', 'draft': True}
+
+    def assert_called_with(self, /, *args, **kwargs):
+        """assert that the last call was made with the specified arguments.
+    
+        Raises an AssertionError if the args and keyword args passed in are
+        different to the last call to the mock."""
+        if self.call_args is None:
+            expected = self._format_mock_call_signature(args, kwargs)
+            actual = 'not called.'
+            error_message = ('expected call not found.\nExpected: %s\n  Actual: %s'
+                    % (expected, actual))
+            raise AssertionError(error_message)
+    
+        def _error_message():
+            msg = self._format_mock_failure_message(args, kwargs)
+            return msg
+        expected = self._call_matcher(_Call((args, kwargs), two=True))
+        actual = self._call_matcher(self.call_args)
+        if actual != expected:
+            cause = expected if isinstance(expected, Exception) else None
+>           raise AssertionError(_error_message()) from cause
+E           AssertionError: expected call not found.
+E           Expected: create_release(tag='v1.1.0', body='notes body', draft=True)
+E             Actual: create_release(tag='v1.1.0', name='v1.1.0', body='notes body', draft=True)
+
+/usr/local/lib/python3.13/unittest/mock.py:979: AssertionError
+___________________ test_falls_back_to_pr_list_when_ai_fails ___________________
+
+prs = [{'number': 1, 'title': 'Old feature', 'merged_at': datetime.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc)...utc), 'labels': [], ...}, {'number': 5, 'title': 'Unmerged experiment', 'merged_at': None, 'labels': ['feature'], ...}]
+
+    def test_falls_back_to_pr_list_when_ai_fails(prs: list[dict]) -> None:
+        ai_client = MagicMock()
+        ai_client.complete.side_effect = RuntimeError("model unavailable")
+    
+        notes = generate_release_notes(prs, "v1.0.0", "v1.1.0", ai_client, PREVIOUS_TAG_DATE, NEW_TAG_DATE)
+    
+        assert notes.startswith(ADVISORY_BANNER)
+>       assert "- Add Foscam stop_ptz (https://github.com/ibll/home-assistant-core/pull/2)" in notes
+E       AssertionError: assert '- Add Foscam stop_ptz (https://github.com/ibll/home-assistant-core/pull/2)' in '> [!WARNING]\n> AI-generated draft. Review and edit these notes before publishing.\n\n## Features\n- [Add Foscam stop_ptz](https://github.com/ibll/home-assistant-core/pull/2) (#2)\n\n## Bug Fixes\n- [Fix pipeline cache](https://github.com/ibll/home-assistant-core/pull/3) (#3)\n\n## Other\n- [Update docs](https://github.com/ibll/home-assistant-core/pull/4) (#4)\n'
+
+tests/scripts/test_team_release_notes.py:105: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  script.team_release_notes:team_release_notes.py:120 AI release notes failed; using the plain PR list
+Traceback (most recent call last):
+  File "/home/claude/d6/script/team_release_notes.py", line 118, in generate_release_notes
+    body = ai_client.complete(build_prompt(sections, previous_tag, new_tag))
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1234, in _execute_mock_call
+    raise effect
+RuntimeError: model unavailable
+______________________ test_falls_back_when_ai_times_out _______________________
+
+prs = [{'number': 1, 'title': 'Old feature', 'merged_at': datetime.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc)...utc), 'labels': [], ...}, {'number': 5, 'title': 'Unmerged experiment', 'merged_at': None, 'labels': ['feature'], ...}]
+
+    def test_falls_back_when_ai_times_out(prs: list[dict]) -> None:
+        ai_client = MagicMock()
+        ai_client.complete.side_effect = TimeoutError()
+    
+        notes = generate_release_notes(prs, "v1.0.0", "v1.1.0", ai_client, PREVIOUS_TAG_DATE, NEW_TAG_DATE)
+    
+        assert notes.startswith(ADVISORY_BANNER)
+>       assert "- Add Foscam stop_ptz" in notes
+E       AssertionError: assert '- Add Foscam stop_ptz' in '> [!WARNING]\n> AI-generated draft. Review and edit these notes before publishing.\n\n## Features\n- [Add Foscam stop_ptz](https://github.com/ibll/home-assistant-core/pull/2) (#2)\n\n## Bug Fixes\n- [Fix pipeline cache](https://github.com/ibll/home-assistant-core/pull/3) (#3)\n\n## Other\n- [Update docs](https://github.com/ibll/home-assistant-core/pull/4) (#4)\n'
+
+tests/scripts/test_team_release_notes.py:117: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  script.team_release_notes:team_release_notes.py:120 AI release notes failed; using the plain PR list
+Traceback (most recent call last):
+  File "/home/claude/d6/script/team_release_notes.py", line 118, in generate_release_notes
+    body = ai_client.complete(build_prompt(sections, previous_tag, new_tag))
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1169, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1173, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/unittest/mock.py", line 1234, in _execute_mock_call
+    raise effect
+TimeoutError
+=========================== short test summary info ============================
+FAILED tests/scripts/test_team_release_notes.py::test_release_is_created_as_draft
+FAILED tests/scripts/test_team_release_notes.py::test_falls_back_to_pr_list_when_ai_fails
+FAILED tests/scripts/test_team_release_notes.py::test_falls_back_when_ai_times_out
+========================= 3 failed, 6 passed in 0.09s ==========================

@@ -1,0 +1,8 @@
+M1 draft=True -> draft=False -> 1 failed, 8 passed in 0.03s
+M2 boundary <= new tag -> < new tag -> 1 failed, 8 passed in 0.03s
+M3 boundary previous < -> <= -> 1 failed, 8 passed in 0.03s
+M4 drop banner from notes -> 3 failed, 6 passed in 0.04s
+M5 fallback drops links -> 2 failed, 7 passed in 0.03s
+M6 AI errors re-raised -> 2 failed, 7 passed in 0.13s
+s/merged_at <= new_tag_date/merged_at < new_tag_date/ -> 3 failed, 6 passed in 0.10s
+s/previous_tag_date < merged_at/previous_tag_date <= merged_at/ -> 3 failed, 6 passed in 0.08s
