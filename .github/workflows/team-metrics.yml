@@ -1,0 +1,65 @@
+name: Team metrics
+
+# Measures the team pipeline every night (issue L3): stage durations, queue
+# time, success rate, reruns, flaky tests, DORA metrics and AI usage.
+# docs/pipeline/metrics.md defines every number.
+
+# yamllint disable-line rule:truthy
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days of team-pipeline runs to measure"
+        default: 30
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  metrics:
+    name: Collect pipeline metrics
+    if: github.repository == 'ibll/home-assistant-core'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read # To list workflow runs, jobs and artifacts
+      contents: read # To check out the metrics script
+    steps:
+      - name: Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Get uv version
+        id: uv-version
+        run: echo "version=$(grep '^uv==' requirements.txt | cut -d'=' -f3)" >> "$GITHUB_OUTPUT"
+      - name: Set up uv and Python 3.14
+        uses: ./.github/actions/setup-uv-python # zizmor: ignore[self-repository] actionlint lacks $/ support
+        with:
+          python-version: "3.14"
+          uv-version: ${{ steps.uv-version.outputs.version }}
+      - name: Compute metrics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # `inputs` is empty on scheduled runs.
+          METRICS_DAYS: ${{ inputs.days || 30 }}
+        run: |
+          uv run --no-project python .github/scripts/team_metrics.py \
+            --days "$METRICS_DAYS" \
+            --output metrics.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+      - name: Name the artifact by date
+        id: date
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+      - name: Upload metrics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: metrics-${{ steps.date.outputs.date }}
+          path: metrics.json
+          if-no-files-found: error
+          retention-days: 90

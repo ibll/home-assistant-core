@@ -8,6 +8,7 @@ Home Assistant Core fork, and how we use AI while building and running it.
 - [issues/](issues/): one file per issue, used to create the GitHub issues.
 - [ai-workflow.md](ai-workflow.md): how we used AI to build the pipeline, results, and where it went wrong.
 - [ai-code-review-checklist.md](ai-code-review-checklist.md): the checklist for validating AI-generated code in every PR, with a [detailed version](ai-code-review-checklist-detailed.md) for large or security changes.
+- [metrics.md](metrics.md): the nightly metrics job (`team-metrics.yml`): stage durations, success rate, DORA and AI usage, with every number defined.
 - [adr/](adr/README.md): decision records: what went wrong, the options we weighed and what we chose.
 - [ai-log/](ai-log/): one entry per issue on how AI was used. Start from [ai-log/TEMPLATE.md](ai-log/TEMPLATE.md).
 - [video/index.html](video/index.html): the animated 1:55 tutorial for Ticket 2, with its script. Open it in a browser and screen-record it.
